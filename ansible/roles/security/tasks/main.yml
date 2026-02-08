@@ -248,6 +248,9 @@
   shell: |
     find /etc/kubernetes/pki -name "*.crt" -exec chmod 0644 {} \;
     find /etc/kubernetes/pki -name "*.key" -exec chmod 0600 {} \;
+  args:
+    executable: /bin/bash
+  changed_when: false
   when: 
     - inventory_hostname in groups['masters']
     - k8s_pki_exist.stat.exists | default(false)
@@ -259,13 +262,32 @@
     path: /var/lib/kubelet/config.yaml
   register: kubelet_config_file
 
-- name: CIS 4.1.1 - Secure kubelet service file
+# Check for kubelet service file in different locations (varies by Ubuntu version)
+- name: Check if kubelet service drop-in exists (systemd location)
+  stat:
+    path: /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+  register: kubelet_dropin_etc
+
+- name: Check if kubelet service drop-in exists (lib location)
+  stat:
+    path: /usr/lib/systemd/system/kubelet.service.d/10-kubeadm.conf
+  register: kubelet_dropin_lib
+
+- name: CIS 4.1.1 - Secure kubelet service file (etc location)
+  file:
+    path: /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+    mode: '0600'
+    owner: root
+    group: root
+  when: kubelet_dropin_etc.stat.exists | default(false)
+
+- name: CIS 4.1.1 - Secure kubelet service file (lib location)
   file:
     path: /usr/lib/systemd/system/kubelet.service.d/10-kubeadm.conf
     mode: '0600'
     owner: root
     group: root
-  ignore_errors: true
+  when: kubelet_dropin_lib.stat.exists | default(false)
 
 - name: CIS 4.1.5 - Secure kubelet config file
   file:
@@ -273,28 +295,31 @@
     mode: '0600'
     owner: root
     group: root
-  when: kubelet_config_file.stat.exists
+  when: kubelet_config_file.stat.exists | default(false)
 
 # CIS 4.2.1 - Kubelet anonymous authentication disabled
-- name: CIS 4.2.1 - Disable anonymous kubelet authentication
-  lineinfile:
-    path: /var/lib/kubelet/config.yaml
-    regexp: '^anonymous:'
-    line: 'anonymous:'
-    state: present
-  when: kubelet_config_file.stat.exists
-  ignore_errors: true
+# Using blockinfile for proper YAML structure instead of lineinfile
+- name: CIS 4.2.1 - Check if anonymous auth block exists
+  shell: grep -c "^authentication:" /var/lib/kubelet/config.yaml || true
+  register: auth_block_exists
+  changed_when: false
+  when: kubelet_config_file.stat.exists | default(false)
 
-- name: CIS 4.2.1 - Set anonymous enabled to false
-  lineinfile:
+- name: CIS 4.2.1 - Ensure authentication block with anonymous disabled
+  blockinfile:
     path: /var/lib/kubelet/config.yaml
-    regexp: '^  enabled:'
-    insertafter: '^anonymous:'
-    line: '  enabled: false'
-    state: present
-  when: kubelet_config_file.stat.exists
+    marker: "# {mark} ANSIBLE MANAGED - CIS 4.2.1 Anonymous Auth"
+    insertafter: EOF
+    block: |
+      authentication:
+        anonymous:
+          enabled: false
+        webhook:
+          enabled: true
+  when: 
+    - kubelet_config_file.stat.exists | default(false)
+    - auth_block_exists.stdout | default('0') == '0'
   notify: Restart kubelet
-  ignore_errors: true
 
 # CIS 4.2.4 - Kubelet read-only port disabled
 - name: CIS 4.2.4 - Disable kubelet read-only port
@@ -303,20 +328,20 @@
     regexp: '^readOnlyPort:'
     line: 'readOnlyPort: 0'
     state: present
-  when: kubelet_config_file.stat.exists
+  when: kubelet_config_file.stat.exists | default(false)
   notify: Restart kubelet
-  ignore_errors: true
 
 # CIS 4.2.6 - Protect kernel defaults
-- name: CIS 4.2.6 - Enable protectKernelDefaults
+# Note: This can cause kubelet to fail if kernel params don't match expectations
+# Setting to false by default for compatibility
+- name: CIS 4.2.6 - Set protectKernelDefaults (disabled for compatibility)
   lineinfile:
     path: /var/lib/kubelet/config.yaml
     regexp: '^protectKernelDefaults:'
-    line: 'protectKernelDefaults: true'
+    line: 'protectKernelDefaults: false'
     state: present
-  when: kubelet_config_file.stat.exists
+  when: kubelet_config_file.stat.exists | default(false)
   notify: Restart kubelet
-  ignore_errors: true
 
 # CIS 5.1.5 - Ensure default service accounts are not used
 - name: CIS 5.1.5 - Note about default service account
