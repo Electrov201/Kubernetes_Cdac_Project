@@ -426,7 +426,257 @@ Pre-configured dashboards in `kubernetes/monitoring/grafana-dashboards.yaml`:
 
 ---
 
+## Node Exporter (Detailed)
+
+**File:** `kubernetes/monitoring/node-exporter.yaml`
+
+Node Exporter runs as a **DaemonSet** on every node and exports hardware/OS metrics to Prometheus.
+
+### How It Works Step-by-Step
+
+```mermaid
+flowchart LR
+    A[Node Host] --> B[Node Exporter Pod]
+    B --> |hostPath mounts| C[/proc, /sys, /root]
+    B --> |Port 9100| D[Prometheus]
+    D --> E[Grafana Dashboard]
+```
+
+1. **DaemonSet Deployment**: Ensures one pod per node automatically
+2. **Host Access**: Uses `hostPID`, `hostIPC`, `hostNetwork` for full system visibility
+3. **Volume Mounts**: Mounts `/proc`, `/sys`, `/` to read system metrics
+4. **Metrics Exported**: CPU, memory, disk, network statistics
+5. **Scrape Configuration**: Prometheus scrapes port 9100 on each node
+
+### Key Configuration
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| hostNetwork | true | Access node's network metrics |
+| hostPID | true | Access process information |
+| hostPort | 9100 | Expose on node's IP |
+| tolerations | NoSchedule, NoExecute | Run on master nodes too |
+
+### Metrics Available
+
+- `node_cpu_seconds_total` - CPU usage
+- `node_memory_MemAvailable_bytes` - Available memory
+- `node_filesystem_avail_bytes` - Disk space
+- `node_network_receive_bytes_total` - Network traffic
+
+---
+
+## Kube-State-Metrics (Detailed)
+
+**File:** `kubernetes/monitoring/kube-state-metrics.yaml`
+
+Kube-State-Metrics generates metrics about the state of Kubernetes objects (pods, deployments, nodes, etc.).
+
+### Why It's Needed
+
+| Without Kube-State-Metrics | With Kube-State-Metrics |
+|----------------------------|-------------------------|
+| No pod count metrics | `kube_pod_status_phase` |
+| No deployment replica info | `kube_deployment_status_replicas` |
+| No node condition data | `kube_node_status_condition` |
+| Grafana shows "No Data" | Full Kubernetes visibility |
+
+### Components Created
+
+1. **ServiceAccount**: `kube-state-metrics` in monitoring namespace
+2. **ClusterRole**: Read-only access to all K8s resources
+3. **ClusterRoleBinding**: Binds role to service account
+4. **Deployment**: Single replica with health probes
+5. **Service**: ClusterIP on ports 8080 (metrics) and 8081 (telemetry)
+
+### RBAC Permissions (What It Can Read)
+
+```yaml
+- Core: pods, nodes, services, secrets, configmaps, PVs, PVCs, namespaces
+- Apps: deployments, daemonsets, replicasets, statefulsets
+- Batch: jobs, cronjobs
+- Networking: ingresses
+- Storage: storageclasses, volumeattachments
+```
+
+### Key Metrics
+
+| Metric | Description |
+|--------|-------------|
+| `kube_pod_status_phase{phase="Running"}` | Running pods count |
+| `kube_deployment_status_available_replicas` | Available replicas |
+| `kube_node_status_condition{condition="Ready"}` | Node health |
+| `kube_pod_container_status_restarts_total` | Container restarts |
+
+---
+
+## Prometheus Alerting Rules (Detailed)
+
+**File:** `kubernetes/monitoring/prometheus-alerts.yaml`
+
+Pre-configured alerting rules for proactive monitoring.
+
+### Alert Categories
+
+#### 1. Node Alerts
+
+| Alert | Condition | Severity | For Duration |
+|-------|-----------|----------|--------------|
+| **NodeDown** | `up{job="node-exporter"} == 0` | Critical | 2 min |
+| **HighCPUUsage** | CPU > 80% | Warning | 5 min |
+| **HighMemoryUsage** | Memory > 85% | Warning | 5 min |
+| **DiskSpaceLow** | Disk < 15% | Warning | 5 min |
+| **DiskSpaceCritical** | Disk < 5% | Critical | 2 min |
+
+#### 2. Kubernetes Alerts
+
+| Alert | Condition | Severity | For Duration |
+|-------|-----------|----------|--------------|
+| **KubernetesNodeNotReady** | Node not Ready | Critical | 5 min |
+| **PodCrashLooping** | Restarts > 0.5/min | Warning | 5 min |
+| **PodNotReady** | Pod not Ready | Warning | 10 min |
+| **DeploymentReplicasMismatch** | Actual ≠ Desired replicas | Warning | 10 min |
+
+#### 3. Application Alerts
+
+| Alert | Condition | Severity | For Duration |
+|-------|-----------|----------|--------------|
+| **NginxDown** | Nginx unreachable | Critical | 2 min |
+| **HighNginxLatency** | 95th percentile > 2s | Warning | 5 min |
+
+#### 4. Backup Alerts
+
+| Alert | Condition | Severity | For Duration |
+|-------|-----------|----------|--------------|
+| **EtcdBackupMissing** | No backup in 2 hours | Critical | 5 min |
+
+### How Alerts Work
+
+```mermaid
+sequenceDiagram
+    Prometheus->>Prometheus: Evaluate alert rules (every 30s)
+    alt Condition TRUE for 'for' duration
+        Prometheus->>Prometheus: Fire alert (status: firing)
+        Note over Prometheus: Alert visible in Prometheus UI
+    else Condition FALSE
+        Prometheus->>Prometheus: Resolve alert (status: resolved)
+    end
+```
+
+---
+
 ## Storage Configuration
+
+### PersistentVolumeClaims (Detailed)
+
+**File:** `kubernetes/storage/nfs-pvc.yaml`
+
+PVCs request storage from the cluster. They bind to matching PVs.
+
+| PVC Name | Namespace | Storage | Bound To PV |
+|----------|-----------|---------|-------------|
+| nfs-pvc | default | 5Gi | nfs-kubernetes-pv |
+| prometheus-pvc | monitoring | 5Gi | nfs-prometheus-pv |
+| grafana-pvc | monitoring | 2Gi | nfs-grafana-pv |
+| nginx-pvc | default | 1Gi | nfs-nginx-pv |
+
+### PV-PVC Binding Flow
+
+```mermaid
+flowchart LR
+    subgraph "Cluster Resources"
+        PV1[PV: nfs-prometheus-pv<br/>labels: app=prometheus]
+        PVC1[PVC: prometheus-pvc<br/>selector: app=prometheus]
+    end
+    
+    PVC1 -->|Selector matches labels| PV1
+    PV1 -->|Bound| PVC1
+```
+
+---
+
+## RBAC Configuration (Detailed)
+
+**File:** `kubernetes/security/pss-rbac.yaml`
+
+### Pod Security Standards Enforcement
+
+The `default` namespace has these labels applied:
+
+```yaml
+pod-security.kubernetes.io/enforce: baseline      # Block non-compliant pods
+pod-security.kubernetes.io/warn: restricted       # Warn about restricted violations
+pod-security.kubernetes.io/audit: restricted      # Log restricted violations
+```
+
+### Sample RBAC Role: pod-reader
+
+| Permission | Resources | Verbs |
+|------------|-----------|-------|
+| Read pods | pods, pods/log | get, list, watch |
+| Read services | services | get, list |
+
+### RoleBinding
+
+```yaml
+Subject: User "developer"
+Role: pod-reader
+Namespace: default
+```
+
+This demonstrates least-privilege access - developers can view pods but cannot modify them.
+
+---
+
+## Nginx Sample Workload (Detailed)
+
+**File:** `kubernetes/nginx/deployment.yaml`
+
+### Self-Healing Features
+
+```mermaid
+flowchart TD
+    subgraph "Health Probes"
+        A[livenessProbe] -->|Fail 3 times| B[Container Restart]
+        C[readinessProbe] -->|Fail| D[Remove from Service]
+    end
+    
+    subgraph "Auto-Recovery"
+        E[Pod Deleted] --> F[ReplicaSet detects]
+        F --> G[Creates new Pod]
+    end
+```
+
+### Probe Configuration
+
+| Probe | Path | Port | Initial Delay | Period | Failure Threshold |
+|-------|------|------|---------------|--------|-------------------|
+| livenessProbe | / | 8080 | 10s | 5s | 3 |
+| readinessProbe | / | 8080 | 5s | 3s | Default |
+
+### Security Context (PSS Compliant)
+
+```yaml
+Pod-level:
+  runAsNonRoot: true
+  runAsUser: 101 (nginx user)
+  seccompProfile: RuntimeDefault
+
+Container-level:
+  allowPrivilegeEscalation: false
+  capabilities: drop ALL
+```
+
+### Rolling Update Strategy
+
+```yaml
+strategy:
+  type: RollingUpdate
+  maxSurge: 1          # One extra pod during update
+  maxUnavailable: 0    # Zero downtime
+```
+
+---
 
 ### NFS Architecture
 
