@@ -2,13 +2,13 @@
 
 A production-ready Kubernetes cluster setup with monitoring, security, and automation.
 
-## 🚀 Quick Start (8GB RAM Setup)
+## 🚀 Quick Start
 
 ### Prerequisites
 
-1. **Two Ubuntu 22.04 VMs** (4GB RAM each)
+1. **Ubuntu 22.04 VMs** (Master + Worker nodes)
 2. **Ansible installed** on your control machine
-3. **SSH key access** to both VMs
+3. **SSH key access** to all VMs
 
 ### Setup Steps
 
@@ -101,14 +101,3 @@ See [Kubernetes_Cluster_Project_Document.md](docs/Kubernetes_Cluster_Project_Doc
 - ✅ **Backup**: Automated etcd backup
 - ✅ **Runtime Security**: Falco (optional)
 
-## ⚠️ 8GB RAM Notes
-
-This setup is optimized for 8GB total RAM:
-- Uses Flannel CNI (lighter than Calico)
-- Master taint removed (runs workloads)
-- Resource limits on all pods
-- Falco enabled with resource limits (256MB per node)
-
-## 📝 License
-
-MIT License - Free for educational use
