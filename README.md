@@ -101,3 +101,39 @@ See [Kubernetes_Cluster_Project_Document.md](docs/Kubernetes_Cluster_Project_Doc
 - ✅ **Backup**: Automated etcd backup
 - ✅ **Runtime Security**: Falco (optional)
 
+## 📈 Scaling Capabilities
+
+### Horizontal Scaling ↔️
+
+| Component | Replicas | Scaling Support |
+|-----------|----------|-----------------|
+| Nginx | 2 | ✅ Manual (`kubectl scale deployment nginx --replicas=N`) |
+| Prometheus | 1 | ⚠️ Single instance by design |
+| Grafana | 1 | ⚠️ Requires shared storage for HA |
+| Node Exporter | DaemonSet | ✅ Auto-scales with nodes |
+| Falco | DaemonSet | ✅ Auto-scales with nodes |
+
+**Note**: NFS storage uses `ReadWriteMany` access mode, enabling multiple pods to share storage.
+
+### Vertical Scaling ↕️
+
+- **Resource Limits**: Defined for all containers in `ansible/group_vars/all.yml`
+- **VPA**: Not configured (can be added for automatic resource adjustment)
+
+### Current Limitations
+
+This project is optimized for **8GB RAM, 2-node lab environment**:
+- No HPA (Horizontal Pod Autoscaler) configured
+- No Metrics Server deployed
+- No Cluster Autoscaler configured
+
+### Adding Auto-Scaling
+
+```bash
+# Deploy Metrics Server (required for HPA)
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+# Scale Nginx manually
+kubectl scale deployment nginx --replicas=5
+```
+
