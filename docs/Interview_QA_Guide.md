@@ -494,6 +494,28 @@ DevOps teams spend 60%+ of time on repetitive tasks instead of innovation. Manua
 > | **File System** | CIS benchmark file permissions |
 > | **Runtime** | Falco for anomaly detection |
 
+### Q21.1: Is there "Live Security Scanning" in this project?
+
+> **Answer:**  
+> Yes, we implement **Runtime Security Monitoring** (often called live scanning) using **Falco**. 
+>
+> While static scanning (like Trivy) checks images for vulnerabilities *before* they run, **Falco scans the "live" behavior** of containers while they are running.
+>
+> **How Falco works "Live":**
+> 1. It acts as a **security camera** for the kernel.
+> 2. It monitors **syscalls** (system calls) made by containers.
+> 3. If a container does something suspicious (like opening a shell or touching `/etc/shadow`), Falco detects it **immediately** based on rules.
+> 4. It generates an alert in the logs and exposes metrics to **Prometheus**, which we can see in **Grafana**.
+
+### Q21.2: How exactly does security work "end-to-end" in this project?
+
+> **Answer:**  
+> I followed a **Defense-in-Depth** (layered) approach:
+> 1. **OS Level (Ansible)**: Hardened the VMs using **UFW firewalls**, SSH key-only access, and **CIS benchmarks** for file permissions.
+> 2. **Network Level (K8s)**: Implemented **Network Policies** (Zero Trust) to ensure pods can only talk to exactly who they need to.
+> 3. **Governance Level (K8s)**: Used **Pod Security Standards (PSS)** with the 'Restricted' profile to ensure no pod can run as root or escape its container.
+> 4. **Runtime Level (Falco)**: Active monitoring to detect real-time threats like unauthorized shell access.
+
 ### Q22: What are Network Policies?
 
 > **Answer:**  
