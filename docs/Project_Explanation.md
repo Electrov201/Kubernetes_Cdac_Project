@@ -437,7 +437,7 @@ Node Exporter runs as a **DaemonSet** on every node and exports hardware/OS metr
 ```mermaid
 flowchart LR
     A[Node Host] --> B[Node Exporter Pod]
-    B --> |hostPath mounts| C[/proc, /sys, /root]
+    B --> |hostPath mounts| C["proc, sys, root filesystems"]
     B --> |Port 9100| D[Prometheus]
     D --> E[Grafana Dashboard]
 ```
