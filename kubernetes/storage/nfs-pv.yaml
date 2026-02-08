@@ -1,0 +1,82 @@
+# =============================================================================
+# NFS PersistentVolumes for All Services - Ubuntu NFS Server
+# =============================================================================
+# UPDATE: nfs.server with your NFS server IP
+# =============================================================================
+---
+# Main Kubernetes Data PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-kubernetes-pv
+  labels:
+    type: nfs
+    app: kubernetes-data
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-storage
+  nfs:
+    server: 192.168.144.132  # UPDATE: Your NFS Server IP
+    path: /srv/nfs/kubernetes
+---
+# Prometheus Data PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-prometheus-pv
+  labels:
+    type: nfs
+    app: prometheus
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-storage
+  nfs:
+    server: 192.168.144.132  # UPDATE: Your NFS Server IP
+    path: /srv/nfs/kubernetes/prometheus
+---
+# Grafana Data PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-grafana-pv
+  labels:
+    type: nfs
+    app: grafana
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-storage
+  nfs:
+    server: 192.168.144.132  # UPDATE: Your NFS Server IP
+    path: /srv/nfs/kubernetes/grafana
+---
+# Nginx Data PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-nginx-pv
+  labels:
+    type: nfs
+    app: nginx
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-storage
+  nfs:
+    server: 192.168.144.132  # UPDATE: Your NFS Server IP
+    path: /srv/nfs/kubernetes/nginx
+

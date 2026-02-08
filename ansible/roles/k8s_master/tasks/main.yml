@@ -1,0 +1,228 @@
+# =============================================================================
+# Kubernetes Master Role - Control Plane Setup
+# =============================================================================
+---
+# Check if cluster is already initialized
+- name: Check if kubeadm has already been initialized
+  stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubeadm_init
+
+# Wait for containerd to be ready
+- name: Ensure containerd is running
+  systemd:
+    name: containerd
+    state: started
+    enabled: yes
+
+# If admin.conf exists, check if API server is actually responding
+- name: Check if API server is healthy
+  shell: kubectl cluster-info --kubeconfig=/etc/kubernetes/admin.conf
+  register: api_health
+  when: kubeadm_init.stat.exists
+  failed_when: false
+  changed_when: false
+
+# Reset if admin.conf exists but API server is not responding (corrupt state)
+- name: Reset cluster if API server is not responding
+  command: kubeadm reset -f
+  when: 
+    - kubeadm_init.stat.exists
+    - api_health.rc is defined
+    - api_health.rc != 0
+
+- name: Clean up after reset
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /var/lib/etcd
+    - /etc/kubernetes
+    - /root/.kube
+  when:
+    - kubeadm_init.stat.exists
+    - api_health.rc is defined
+    - api_health.rc != 0
+
+- name: Recreate required directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0700'
+  loop:
+    - /var/lib/etcd
+    - /etc/kubernetes
+  when:
+    - kubeadm_init.stat.exists
+    - api_health.rc is defined
+    - api_health.rc != 0
+
+# Re-check after potential reset
+- name: Re-check if kubeadm needs initialization
+  stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubeadm_init_final
+
+# Initialize the Kubernetes cluster
+- name: Initialize Kubernetes control plane
+  command: >
+    kubeadm init
+    --apiserver-advertise-address={{ api_server_advertise_address }}
+    --pod-network-cidr={{ pod_network_cidr }}
+    --service-cidr={{ service_cidr }}
+    --cri-socket=unix:///run/containerd/containerd.sock
+  when: not kubeadm_init_final.stat.exists
+  register: kubeadm_init_result
+  timeout: 600
+
+# Setup kubectl for root user
+- name: Create .kube directory for root
+  file:
+    path: /root/.kube
+    state: directory
+    mode: '0755'
+
+- name: Copy admin.conf to root's .kube directory
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /root/.kube/config
+    remote_src: yes
+    mode: '0600'
+
+# Setup kubectl for ubuntu user
+- name: Create .kube directory for ubuntu user
+  file:
+    path: /home/ubuntu/.kube
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: '0755'
+
+- name: Copy admin.conf to ubuntu's .kube directory
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/ubuntu/.kube/config
+    remote_src: yes
+    owner: ubuntu
+    group: ubuntu
+    mode: '0600'
+
+# Wait for API server to be ready before installing CNI
+- name: Wait for API server to be ready
+  shell: kubectl cluster-info
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: api_ready
+  until: api_ready.rc == 0
+  retries: 30
+  delay: 10
+
+# Install CNI Plugin (Flannel - optimized for 8GB RAM)
+- name: Install Flannel CNI
+  shell: kubectl apply -f {{ flannel_manifest_url }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: cni_plugin == "flannel"
+  register: flannel_result
+  retries: 5
+  delay: 10
+  until: flannel_result.rc == 0
+
+# Optional: Install Calico CNI (if more RAM available)
+- name: Install Calico CNI
+  shell: kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/calico.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: cni_plugin == "calico"
+
+# Wait for Flannel pods to be running
+- name: Wait for Flannel pods to be ready
+  shell: kubectl get pods -n kube-flannel -o jsonpath='{.items[*].status.phase}' | grep -c Running
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: flannel_pods
+  until: flannel_pods.stdout | int >= 1
+  retries: 30
+  delay: 10
+  when: cni_plugin == "flannel"
+  ignore_errors: true
+
+# Remove taint from master to allow workload scheduling (for 8GB setup)
+- name: Remove NoSchedule taint from master
+  shell: kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- || true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: allow_master_scheduling | default(true)
+
+# Generate join command for workers
+- name: Generate join command
+  shell: kubeadm token create --print-join-command
+  register: join_command_raw
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Set join command as fact
+  set_fact:
+    join_command: "{{ join_command_raw.stdout }} --cri-socket=unix:///run/containerd/containerd.sock"
+
+# Save join command to file for reference
+- name: Save join command to file
+  copy:
+    content: "{{ join_command }}"
+    dest: /opt/k8s-join-command.sh
+    mode: '0700'
+
+# Wait for control plane to be ready
+- name: Wait for control plane pods to be ready
+  shell: kubectl get pods -n kube-system --no-headers | grep -E "(Running|Completed)" | wc -l
+  register: ready_pods
+  until: ready_pods.stdout | int >= 5
+  retries: 30
+  delay: 10
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+# Apply Pod Security Standards to default namespace
+- name: Apply Pod Security Standards labels to default namespace
+  shell: |
+    kubectl label namespace default pod-security.kubernetes.io/enforce={{ pss_level }} --overwrite
+    kubectl label namespace default pod-security.kubernetes.io/warn={{ pss_level }} --overwrite
+    kubectl label namespace default pod-security.kubernetes.io/audit={{ pss_level }} --overwrite
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: enable_pod_security_standards | default(true)
+
+# Setup etcd backup script
+- name: Create backup directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0700'
+  loop:
+    - /backup/etcd
+    - /opt/scripts
+
+- name: Copy etcd backup script
+  copy:
+    src: "{{ playbook_dir }}/../scripts/etcd-backup.sh"
+    dest: /opt/scripts/etcd-backup.sh
+    mode: '0755'
+  ignore_errors: true
+
+- name: Setup etcd backup cron job
+  cron:
+    name: "etcd hourly backup"
+    minute: "0"
+    job: "/opt/scripts/etcd-backup.sh >> /var/log/etcd-backup.log 2>&1"
+    user: root
+
+- name: Display master setup completion
+  debug:
+    msg:
+      - "============================================"
+      - "MASTER NODE SETUP COMPLETE!"
+      - "============================================"
+      - "Join command saved to: /opt/k8s-join-command.sh"
+      - "CNI: {{ cni_plugin | upper }}"
+      - "Pod Security Standards: {{ pss_level }}"
+      - "============================================"

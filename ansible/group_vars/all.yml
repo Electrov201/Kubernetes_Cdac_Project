@@ -1,0 +1,92 @@
+# =============================================================================
+# Global Variables for Kubernetes Cluster Setup
+# =============================================================================
+# Optimized for 8GB RAM (2-node setup)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Kubernetes Configuration
+# -----------------------------------------------------------------------------
+kubernetes_version: "1.29"
+kubernetes_apt_key_url: "https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key"
+kubernetes_apt_repo: "https://pkgs.k8s.io/core:/stable:/v1.29/deb/"
+
+# Pod network CIDR (must not overlap with node network)
+pod_network_cidr: "10.244.0.0/16"
+
+# Service network CIDR
+service_cidr: "10.96.0.0/12"
+
+# API Server advertise address (UPDATE with your master IP)
+api_server_advertise_address: "192.168.144.130"
+
+# CNI Plugin - Using Flannel for 8GB RAM optimization
+# Options: flannel, calico
+cni_plugin: "flannel"
+flannel_manifest_url: "https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml"
+
+# -----------------------------------------------------------------------------
+# Container Runtime Configuration
+# -----------------------------------------------------------------------------
+container_runtime: "containerd"
+
+# -----------------------------------------------------------------------------
+# NFS Storage Configuration (Ubuntu NFS Server)
+# -----------------------------------------------------------------------------
+# UPDATE these values with your NFS server details
+nfs_server: "192.168.144.132"
+nfs_path: "/srv/nfs/kubernetes"
+nfs_backup_path: "/srv/nfs/etcd-backups"
+storage_class_name: "nfs-storage"
+
+# -----------------------------------------------------------------------------
+# Monitoring Configuration (Resource-Optimized for 8GB)
+# -----------------------------------------------------------------------------
+prometheus_namespace: "monitoring"
+prometheus_nodeport: 30090
+prometheus_memory_limit: "512Mi"
+prometheus_retention_time: "3d"
+prometheus_retention_size: "1GB"
+
+grafana_nodeport: 30300
+grafana_admin_password: "admin"
+grafana_memory_limit: "256Mi"
+
+# -----------------------------------------------------------------------------
+# Nginx Sample App Configuration (Resource-Optimized)
+# -----------------------------------------------------------------------------
+nginx_namespace: "default"
+nginx_nodeport: 30080
+nginx_replicas: 2  # Reduced from 3 for 8GB setup
+nginx_memory_limit: "64Mi"
+nginx_cpu_limit: "100m"
+
+# -----------------------------------------------------------------------------
+# Security Configuration
+# -----------------------------------------------------------------------------
+# Firewall settings
+enable_firewall: true
+allowed_ssh_networks:
+  - "192.168.144.0/24"
+
+# SSH hardening
+disable_root_login: true
+disable_password_auth: true
+
+# Kubernetes security
+enable_pod_security_standards: true
+pss_level: "baseline"  # Options: privileged, baseline, restricted
+
+# Falco Runtime Security (Enabled for threat detection)
+enable_falco: true  # Runtime security monitoring enabled
+falco_memory_limit: "256Mi"
+
+# -----------------------------------------------------------------------------
+# Cluster Settings for 8GB RAM
+# -----------------------------------------------------------------------------
+# Allow master to run workloads (removes NoSchedule taint)
+allow_master_scheduling: true
+
+# Resource reservations for system components
+kubelet_system_reserved_memory: "500Mi"
+kubelet_system_reserved_cpu: "200m"

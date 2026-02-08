@@ -1,0 +1,71 @@
+# =============================================================================
+# NFS PersistentVolumeClaims for All Services
+# =============================================================================
+---
+# Main Kubernetes Data PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-storage
+  resources:
+    requests:
+      storage: 5Gi
+  selector:
+    matchLabels:
+      app: kubernetes-data
+---
+# Prometheus Data PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+  namespace: monitoring
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-storage
+  resources:
+    requests:
+      storage: 5Gi
+  selector:
+    matchLabels:
+      app: prometheus
+---
+# Grafana Data PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-pvc
+  namespace: monitoring
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-storage
+  resources:
+    requests:
+      storage: 2Gi
+  selector:
+    matchLabels:
+      app: grafana
+---
+# Nginx Data PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nginx-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-storage
+  resources:
+    requests:
+      storage: 1Gi
+  selector:
+    matchLabels:
+      app: nginx

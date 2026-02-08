@@ -1,0 +1,143 @@
+# =============================================================================
+# Prometheus Alerting Rules - Essential Cluster Alerts
+# =============================================================================
+# These rules enable proactive incident detection (claimed in interview doc)
+# =============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-alerts
+  namespace: monitoring
+  labels:
+    app: prometheus
+data:
+  alerts.yml: |
+    groups:
+      # =====================================================================
+      # Node Alerts - Hardware & System Level
+      # =====================================================================
+      - name: node-alerts
+        rules:
+          - alert: NodeDown
+            expr: up{job="node-exporter"} == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Node {{ $labels.instance }} is down"
+              description: "Node has been unreachable for more than 2 minutes."
+
+          - alert: HighCPUUsage
+            expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High CPU usage on {{ $labels.instance }}"
+              description: "CPU usage is above 80% for more than 5 minutes."
+
+          - alert: HighMemoryUsage
+            expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High memory usage on {{ $labels.instance }}"
+              description: "Memory usage is above 85% for more than 5 minutes."
+
+          - alert: DiskSpaceLow
+            expr: (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes) * 100 < 15
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Low disk space on {{ $labels.instance }}"
+              description: "Disk space is below 15% on {{ $labels.mountpoint }}."
+
+          - alert: DiskSpaceCritical
+            expr: (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes) * 100 < 5
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Critical disk space on {{ $labels.instance }}"
+              description: "Disk space is below 5% - immediate action required!"
+
+      # =====================================================================
+      # Kubernetes Cluster Alerts
+      # =====================================================================
+      - name: kubernetes-alerts
+        rules:
+          - alert: KubernetesNodeNotReady
+            expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Kubernetes node {{ $labels.node }} not ready"
+              description: "Node has been in NotReady state for more than 5 minutes."
+
+          - alert: PodCrashLooping
+            expr: rate(kube_pod_container_status_restarts_total[15m]) > 0.5
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod {{ $labels.pod }} is crash looping"
+              description: "Pod is restarting more than once every 2 minutes."
+
+          - alert: PodNotReady
+            expr: kube_pod_status_ready{condition="true"} == 0
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod {{ $labels.pod }} not ready"
+              description: "Pod has been in non-ready state for more than 10 minutes."
+
+          - alert: DeploymentReplicasMismatch
+            expr: kube_deployment_spec_replicas != kube_deployment_status_available_replicas
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Deployment {{ $labels.deployment }} replica mismatch"
+              description: "Deployment does not have the expected number of replicas."
+
+      # =====================================================================
+      # etcd Backup Alerts (Disaster Recovery)
+      # =====================================================================
+      - name: etcd-backup-alerts
+        rules:
+          - alert: EtcdBackupMissing
+            expr: time() - etcd_backup_last_success_timestamp_seconds > 7200
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "etcd backup is overdue"
+              description: "No successful etcd backup in the last 2 hours."
+
+      # =====================================================================
+      # Application Alerts (Nginx)
+      # =====================================================================
+      - name: application-alerts
+        rules:
+          - alert: NginxDown
+            expr: up{job="nginx"} == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Nginx service is down"
+              description: "Nginx has been unreachable for more than 2 minutes."
+
+          - alert: HighNginxLatency
+            expr: histogram_quantile(0.95, rate(nginx_http_request_duration_seconds_bucket[5m])) > 2
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High latency on Nginx"
+              description: "95th percentile latency is above 2 seconds."

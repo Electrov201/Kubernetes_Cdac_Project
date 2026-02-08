@@ -1,0 +1,126 @@
+# =============================================================================
+# Main Ansible Playbook - Kubernetes Cluster Setup
+# =============================================================================
+# Usage: ansible-playbook -i inventory/hosts.ini site.yml
+# =============================================================================
+
+---
+# -----------------------------------------------------------------------------
+# Play 1: Common setup for all nodes
+# -----------------------------------------------------------------------------
+- name: Setup prerequisites on all nodes
+  hosts: k8s_cluster
+  become: true
+  gather_facts: true
+  roles:
+    - common
+    - security
+
+# -----------------------------------------------------------------------------
+# Play 2: Initialize Kubernetes Control Plane
+# -----------------------------------------------------------------------------
+- name: Setup Kubernetes Master
+  hosts: masters
+  become: true
+  gather_facts: true
+  roles:
+    - k8s_master
+
+# -----------------------------------------------------------------------------
+# Play 3: Join Worker Nodes to the Cluster
+# -----------------------------------------------------------------------------
+- name: Setup Kubernetes Workers
+  hosts: workers
+  become: true
+  gather_facts: true
+  roles:
+    - k8s_worker
+
+# -----------------------------------------------------------------------------
+# Play 4: Deploy Cluster Services (run on master)
+# -----------------------------------------------------------------------------
+- name: Deploy cluster services
+  hosts: masters
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Wait for all nodes to be ready
+      shell: kubectl get nodes --no-headers | grep -c " Ready" || echo "0"
+      register: ready_nodes
+      until: ready_nodes.stdout | int >= groups['k8s_cluster'] | length
+      retries: 30
+      delay: 10
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: Display cluster status
+      shell: kubectl get nodes -o wide
+      register: cluster_status
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: Show cluster status
+      debug:
+        msg: "{{ cluster_status.stdout_lines }}"
+
+    - name: Copy kubernetes manifests to master
+      copy:
+        src: "{{ playbook_dir }}/../kubernetes/"
+        dest: /opt/kubernetes/
+        mode: '0644'
+
+    - name: Create monitoring namespace
+      shell: kubectl create namespace {{ prometheus_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: Apply storage manifests
+      shell: kubectl apply -f /opt/kubernetes/storage/
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      ignore_errors: true
+
+    - name: Apply monitoring manifests
+      shell: kubectl apply -f /opt/kubernetes/monitoring/
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: Apply nginx manifests
+      shell: kubectl apply -f /opt/kubernetes/nginx/
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: Apply security manifests
+      shell: kubectl apply -f /opt/kubernetes/security/
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: Apply Falco manifests (if enabled)
+      shell: kubectl apply -f /opt/kubernetes/falco/
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      when: enable_falco | default(false)
+
+    - name: Wait for pods to be ready
+      shell: sleep 30
+
+    - name: Display all running pods
+      shell: kubectl get pods --all-namespaces -o wide
+      register: all_pods
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: Show running pods
+      debug:
+        msg: "{{ all_pods.stdout_lines }}"
+
+    - name: Display service access URLs
+      debug:
+        msg:
+          - "============================================"
+          - "CLUSTER DEPLOYMENT COMPLETE!"
+          - "============================================"
+          - "Prometheus: http://{{ api_server_advertise_address }}:{{ prometheus_nodeport }}"
+          - "Grafana:    http://{{ api_server_advertise_address }}:{{ grafana_nodeport }}"
+          - "Nginx:      http://{{ api_server_advertise_address }}:{{ nginx_nodeport }}"
+          - "============================================"

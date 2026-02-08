@@ -1,0 +1,340 @@
+# =============================================================================
+# Security Role - Security Hardening
+# =============================================================================
+---
+# Configure UFW Firewall
+- name: Install UFW
+  apt:
+    name: ufw
+    state: present
+  when: enable_firewall | default(true)
+
+- name: Set UFW default policies
+  ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: 'incoming', policy: 'deny' }
+    - { direction: 'outgoing', policy: 'allow' }
+  when: enable_firewall | default(true)
+
+- name: Allow SSH
+  ufw:
+    rule: allow
+    port: '22'
+    proto: tcp
+  when: enable_firewall | default(true)
+
+# Kubernetes API Server (Master only)
+- name: Allow Kubernetes API Server
+  ufw:
+    rule: allow
+    port: '6443'
+    proto: tcp
+  when: 
+    - enable_firewall | default(true)
+    - inventory_hostname in groups['masters']
+
+# etcd (Master only)
+- name: Allow etcd
+  ufw:
+    rule: allow
+    port: '2379:2380'
+    proto: tcp
+  when:
+    - enable_firewall | default(true)
+    - inventory_hostname in groups['masters']
+
+# Kubelet API (All nodes)
+- name: Allow Kubelet API
+  ufw:
+    rule: allow
+    port: '10250'
+    proto: tcp
+  when: enable_firewall | default(true)
+
+# kube-scheduler (Master only)
+- name: Allow kube-scheduler
+  ufw:
+    rule: allow
+    port: '10251'
+    proto: tcp
+  when:
+    - enable_firewall | default(true)
+    - inventory_hostname in groups['masters']
+
+# kube-controller-manager (Master only)
+- name: Allow kube-controller-manager
+  ufw:
+    rule: allow
+    port: '10252'
+    proto: tcp
+  when:
+    - enable_firewall | default(true)
+    - inventory_hostname in groups['masters']
+
+# NodePort range (All nodes)
+- name: Allow NodePort range
+  ufw:
+    rule: allow
+    port: '30000:32767'
+    proto: tcp
+  when: enable_firewall | default(true)
+
+# Flannel VXLAN
+- name: Allow Flannel VXLAN
+  ufw:
+    rule: allow
+    port: '8472'
+    proto: udp
+  when: enable_firewall | default(true)
+
+# Node Exporter metrics port
+- name: Allow Node Exporter metrics
+  ufw:
+    rule: allow
+    port: '9100'
+    proto: tcp
+  when: enable_firewall | default(true)
+
+# Enable UFW
+- name: Enable UFW
+  ufw:
+    state: enabled
+  when: enable_firewall | default(true)
+  ignore_errors: true
+
+# SSH Hardening
+- name: Disable root login via SSH
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PermitRootLogin'
+    line: 'PermitRootLogin no'
+    state: present
+  when: disable_root_login | default(true)
+  notify: Restart SSH
+  ignore_errors: true
+
+- name: Disable password authentication
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PasswordAuthentication'
+    line: 'PasswordAuthentication no'
+    state: present
+  when: disable_password_auth | default(true)
+  notify: Restart SSH
+
+# Set secure file permissions
+- name: Secure kubelet configuration
+  file:
+    path: /var/lib/kubelet/config.yaml
+    mode: '0600'
+  ignore_errors: true
+
+# Kernel hardening parameters
+- name: Apply security sysctl parameters
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-security.conf
+    reload: yes
+  loop:
+    - { name: 'kernel.randomize_va_space', value: '2' }
+    - { name: 'net.ipv4.conf.all.rp_filter', value: '1' }
+    - { name: 'net.ipv4.conf.default.rp_filter', value: '1' }
+    - { name: 'net.ipv4.icmp_echo_ignore_broadcasts', value: '1' }
+    - { name: 'net.ipv4.conf.all.accept_source_route', value: '0' }
+    - { name: 'net.ipv4.conf.default.accept_source_route', value: '0' }
+    - { name: 'net.ipv4.conf.all.send_redirects', value: '0' }
+    - { name: 'net.ipv4.conf.default.send_redirects', value: '0' }
+
+# Check which optional services exist and disable them
+- name: Check if avahi-daemon exists
+  command: systemctl list-unit-files avahi-daemon.service
+  register: avahi_exists
+  changed_when: false
+  failed_when: false
+
+- name: Disable avahi-daemon if exists
+  systemd:
+    name: avahi-daemon
+    enabled: no
+    state: stopped
+  when: avahi_exists.rc == 0
+  ignore_errors: true
+
+# =============================================================================
+# CIS Kubernetes Benchmark Controls
+# =============================================================================
+
+# Check if Kubernetes is initialized before applying CIS controls
+- name: Check if Kubernetes manifests exist
+  stat:
+    path: /etc/kubernetes/manifests/kube-apiserver.yaml
+  register: k8s_manifests_exist
+  when: inventory_hostname in groups['masters']
+
+- name: Check if PKI directory exists
+  stat:
+    path: /etc/kubernetes/pki
+  register: k8s_pki_exist
+  when: inventory_hostname in groups['masters']
+
+# CIS 1.1.1-1.1.21 - Control Plane Configuration Files Permissions
+- name: CIS 1.1 - Secure API server pod specification
+  file:
+    path: /etc/kubernetes/manifests/kube-apiserver.yaml
+    mode: '0600'
+    owner: root
+    group: root
+  when: 
+    - inventory_hostname in groups['masters']
+    - k8s_manifests_exist.stat.exists | default(false)
+
+- name: CIS 1.1 - Secure controller manager pod specification
+  file:
+    path: /etc/kubernetes/manifests/kube-controller-manager.yaml
+    mode: '0600'
+    owner: root
+    group: root
+  when: 
+    - inventory_hostname in groups['masters']
+    - k8s_manifests_exist.stat.exists | default(false)
+
+- name: CIS 1.1 - Secure scheduler pod specification
+  file:
+    path: /etc/kubernetes/manifests/kube-scheduler.yaml
+    mode: '0600'
+    owner: root
+    group: root
+  when: 
+    - inventory_hostname in groups['masters']
+    - k8s_manifests_exist.stat.exists | default(false)
+
+- name: CIS 1.1 - Secure etcd pod specification
+  file:
+    path: /etc/kubernetes/manifests/etcd.yaml
+    mode: '0600'
+    owner: root
+    group: root
+  when: 
+    - inventory_hostname in groups['masters']
+    - k8s_manifests_exist.stat.exists | default(false)
+
+# CIS 1.1.12 - Secure etcd data directory
+- name: CIS 1.1.12 - Secure etcd data directory
+  file:
+    path: /var/lib/etcd
+    mode: '0700'
+    owner: root
+    group: root
+    recurse: yes
+  when: inventory_hostname in groups['masters']
+  ignore_errors: true
+
+# CIS 1.1.19 - Secure PKI directory
+- name: CIS 1.1.19 - Secure PKI directory
+  file:
+    path: /etc/kubernetes/pki
+    mode: '0755'
+    owner: root
+    group: root
+  when: 
+    - inventory_hostname in groups['masters']
+    - k8s_pki_exist.stat.exists | default(false)
+
+# CIS 1.1.20-21 - Secure PKI certificates
+- name: CIS 1.1.20-21 - Secure PKI certificate files
+  shell: |
+    find /etc/kubernetes/pki -name "*.crt" -exec chmod 0644 {} \;
+    find /etc/kubernetes/pki -name "*.key" -exec chmod 0600 {} \;
+  when: 
+    - inventory_hostname in groups['masters']
+    - k8s_pki_exist.stat.exists | default(false)
+
+# CIS 4.1 - Worker Node Configuration Files
+# Check if kubelet config exists before securing
+- name: Check if kubelet config exists
+  stat:
+    path: /var/lib/kubelet/config.yaml
+  register: kubelet_config_file
+
+- name: CIS 4.1.1 - Secure kubelet service file
+  file:
+    path: /usr/lib/systemd/system/kubelet.service.d/10-kubeadm.conf
+    mode: '0600'
+    owner: root
+    group: root
+  ignore_errors: true
+
+- name: CIS 4.1.5 - Secure kubelet config file
+  file:
+    path: /var/lib/kubelet/config.yaml
+    mode: '0600'
+    owner: root
+    group: root
+  when: kubelet_config_file.stat.exists
+
+# CIS 4.2.1 - Kubelet anonymous authentication disabled
+- name: CIS 4.2.1 - Disable anonymous kubelet authentication
+  lineinfile:
+    path: /var/lib/kubelet/config.yaml
+    regexp: '^anonymous:'
+    line: 'anonymous:'
+    state: present
+  when: kubelet_config_file.stat.exists
+  ignore_errors: true
+
+- name: CIS 4.2.1 - Set anonymous enabled to false
+  lineinfile:
+    path: /var/lib/kubelet/config.yaml
+    regexp: '^  enabled:'
+    insertafter: '^anonymous:'
+    line: '  enabled: false'
+    state: present
+  when: kubelet_config_file.stat.exists
+  notify: Restart kubelet
+  ignore_errors: true
+
+# CIS 4.2.4 - Kubelet read-only port disabled
+- name: CIS 4.2.4 - Disable kubelet read-only port
+  lineinfile:
+    path: /var/lib/kubelet/config.yaml
+    regexp: '^readOnlyPort:'
+    line: 'readOnlyPort: 0'
+    state: present
+  when: kubelet_config_file.stat.exists
+  notify: Restart kubelet
+  ignore_errors: true
+
+# CIS 4.2.6 - Protect kernel defaults
+- name: CIS 4.2.6 - Enable protectKernelDefaults
+  lineinfile:
+    path: /var/lib/kubelet/config.yaml
+    regexp: '^protectKernelDefaults:'
+    line: 'protectKernelDefaults: true'
+    state: present
+  when: kubelet_config_file.stat.exists
+  notify: Restart kubelet
+  ignore_errors: true
+
+# CIS 5.1.5 - Ensure default service accounts are not used
+- name: CIS 5.1.5 - Note about default service account
+  debug:
+    msg: "CIS 5.1.5 - Ensure workloads don't use default service account (handled by PSS)"
+
+# CIS 5.2.2-5.2.9 - Pod Security Standards (handled via PSS labels in k8s_master role)
+- name: CIS 5.2 - Pod Security Standards applied
+  debug:
+    msg: "CIS 5.2 controls are enforced via Pod Security Standards labels on namespaces"
+
+# CIS 5.3.2 - Network Policies
+- name: CIS 5.3.2 - Note about network policies
+  debug:
+    msg: "CIS 5.3.2 - Network policies applied via kubernetes/security/network-policy.yaml"
+
+# CIS 5.7.4 - Default namespace should not be used
+- name: CIS 5.7.4 - Warning about default namespace
+  debug:
+    msg: "CIS 5.7.4 - Production workloads should use dedicated namespaces, not default"
+

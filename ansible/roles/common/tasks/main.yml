@@ -1,0 +1,152 @@
+# =============================================================================
+# Common Role - Prerequisites for all Kubernetes nodes
+# =============================================================================
+---
+# Disable swap (required by Kubernetes)
+- name: Disable swap immediately
+  command: swapoff -a
+  changed_when: false
+
+- name: Disable swap permanently
+  replace:
+    path: /etc/fstab
+    regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+    replace: '# \1'
+
+# Update system packages
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install required packages
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - software-properties-common
+      - nfs-common
+      - python3-pip
+    state: present
+
+# Configure kernel modules
+- name: Load required kernel modules
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+
+- name: Ensure kernel modules load on boot
+  copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+
+# Configure sysctl for Kubernetes networking
+- name: Configure sysctl parameters for Kubernetes
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/k8s.conf
+    reload: yes
+  loop:
+    - { name: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+    - { name: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+    - { name: 'net.ipv4.ip_forward', value: '1' }
+
+# Install containerd
+- name: Install containerd
+  apt:
+    name: containerd
+    state: present
+
+- name: Create containerd config directory
+  file:
+    path: /etc/containerd
+    state: directory
+
+- name: Generate default containerd config
+  shell: containerd config default > /etc/containerd/config.toml
+  args:
+    creates: /etc/containerd/config.toml
+
+- name: Configure containerd to use systemd cgroup driver
+  replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup = false'
+    replace: 'SystemdCgroup = true'
+  notify: Restart containerd
+
+- name: Enable and start containerd
+  systemd:
+    name: containerd
+    enabled: yes
+    state: started
+
+# Add Kubernetes apt repository
+- name: Create keyrings directory
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Add Kubernetes apt key
+  get_url:
+    url: "{{ kubernetes_apt_key_url }}"
+    dest: /etc/apt/keyrings/kubernetes-apt-keyring.asc
+    mode: '0644'
+
+- name: Add Kubernetes apt repository
+  apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.asc] {{ kubernetes_apt_repo }} /"
+    state: present
+    filename: kubernetes
+
+- name: Update apt cache after adding K8s repo
+  apt:
+    update_cache: yes
+
+# Install Kubernetes components
+- name: Install Kubernetes components
+  apt:
+    name:
+      - kubelet
+      - kubeadm
+      - kubectl
+    state: present
+
+- name: Hold Kubernetes packages at current version
+  dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubelet
+    - kubeadm
+    - kubectl
+
+# Configure kubelet with resource reservations (for 8GB setup)
+- name: Configure kubelet extra args
+  copy:
+    dest: /etc/default/kubelet
+    content: |
+      KUBELET_EXTRA_ARGS=--system-reserved=memory={{ kubelet_system_reserved_memory }},cpu={{ kubelet_system_reserved_cpu }}
+  notify: Restart kubelet
+
+- name: Enable kubelet service
+  systemd:
+    name: kubelet
+    enabled: yes
+
+# Configure hosts file
+- name: Add cluster nodes to /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ hostvars[item]['ansible_host'] }} {{ item }}"
+    state: present
+  loop: "{{ groups['k8s_cluster'] }}"

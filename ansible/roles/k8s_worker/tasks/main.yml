@@ -1,0 +1,107 @@
+# =============================================================================
+# Kubernetes Worker Role - Worker Node Setup
+# =============================================================================
+---
+# Ensure containerd is running
+- name: Ensure containerd is running
+  systemd:
+    name: containerd
+    state: started
+    enabled: yes
+
+# Check if node is already part of the cluster
+- name: Check if node is already joined
+  stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: kubelet_conf
+
+# If kubelet.conf exists, verify the worker is actually in the current cluster
+- name: Check if worker is in current cluster
+  shell: kubectl get node {{ inventory_hostname }} --no-headers 2>/dev/null || echo "NOT_FOUND"
+  delegate_to: "{{ groups['masters'][0] }}"
+  register: node_in_cluster
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+  failed_when: false
+  when: kubelet_conf.stat.exists
+
+# Worker has old config but is not in current cluster - need to reset and rejoin
+- name: Reset worker if not in current cluster
+  command: kubeadm reset -f
+  when: 
+    - kubelet_conf.stat.exists
+    - node_in_cluster.stdout is defined
+    - "'NOT_FOUND' in node_in_cluster.stdout or node_in_cluster.rc != 0"
+
+- name: Clean up old worker config
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/kubernetes
+    - /var/lib/kubelet
+  when:
+    - kubelet_conf.stat.exists
+    - node_in_cluster.stdout is defined
+    - "'NOT_FOUND' in node_in_cluster.stdout or node_in_cluster.rc != 0"
+
+- name: Recreate worker directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /etc/kubernetes
+    - /var/lib/kubelet
+  when:
+    - kubelet_conf.stat.exists
+    - node_in_cluster.stdout is defined
+    - "'NOT_FOUND' in node_in_cluster.stdout or node_in_cluster.rc != 0"
+
+# Re-check after potential reset
+- name: Re-check if node needs to join
+  stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: kubelet_conf_final
+
+# Get join command from master (already includes --cri-socket)
+- name: Get join command from master
+  set_fact:
+    join_command: "{{ hostvars[groups['masters'][0]]['join_command'] }}"
+  when: not kubelet_conf_final.stat.exists
+
+# Join the cluster
+- name: Join Kubernetes cluster
+  command: "{{ join_command }}"
+  when: not kubelet_conf_final.stat.exists
+  register: join_result
+  timeout: 300
+
+# Wait for kubelet to be running
+- name: Wait for kubelet to start
+  systemd:
+    name: kubelet
+    state: started
+  register: kubelet_started
+  retries: 5
+  delay: 10
+
+# Wait for node to be ready
+- name: Wait for node to be ready
+  shell: |
+    kubectl get node {{ inventory_hostname }} --no-headers 2>/dev/null | grep -c " Ready" || echo "0"
+  delegate_to: "{{ groups['masters'][0] }}"
+  register: node_ready
+  until: node_ready.stdout | int >= 1
+  retries: 30
+  delay: 10
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Display worker node status
+  debug:
+    msg:
+      - "============================================"
+      - "WORKER NODE {{ inventory_hostname }} JOINED!"
+      - "============================================"

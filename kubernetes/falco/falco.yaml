@@ -1,0 +1,225 @@
+# =============================================================================
+# Falco Runtime Security - DaemonSet Deployment
+# =============================================================================
+# Optional for 8GB RAM setup - Enable only if you have extra resources
+# =============================================================================
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: falco
+  labels:
+    name: falco
+    pod-security.kubernetes.io/enforce: privileged
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: falco
+  namespace: falco
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: falco
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "pods", "replicationcontrollers", "services", "events", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: falco
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: falco
+subjects:
+  - kind: ServiceAccount
+    name: falco
+    namespace: falco
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-config
+  namespace: falco
+data:
+  falco.yaml: |
+    json_output: true
+    log_stderr: true
+    log_syslog: false
+    log_level: info
+    priority: debug
+    buffered_outputs: false
+    syscall_event_timeouts:
+      max_consecutives: 1000
+    outputs:
+      rate: 1
+      max_burst: 1000
+    file_output:
+      enabled: false
+      keep_alive: false
+      filename: /var/log/falco/events.log
+    stdout_output:
+      enabled: true
+    http_output:
+      enabled: false
+      url: ""
+      user_agent: "falcosecurity/falco"
+    
+    # Prometheus metrics exporter
+    webserver:
+      enabled: true
+      listen_port: 8765
+      k8s_healthz_endpoint: /healthz
+      ssl_enabled: false
+    
+    metrics:
+      enabled: true
+      interval: 30s
+      output_rule: true
+      rules_counters_enabled: true
+      resource_utilization_enabled: true
+  
+  falco_rules.local.yaml: |
+    # Custom rules for Kubernetes security monitoring
+    
+    - rule: Shell Spawned in Container
+      desc: Detect shell being spawned in a container
+      condition: >
+        spawned_process and
+        container and
+        (proc.name = "bash" or
+         proc.name = "sh" or
+         proc.name = "zsh")
+      output: >
+        Shell spawned in container
+        (user=%user.name container=%container.name
+         image=%container.image.repository
+         pod=%k8s.pod.name ns=%k8s.ns.name
+         shell=%proc.name parent=%proc.pname)
+      priority: WARNING
+      tags: [container, shell, mitre_execution]
+    
+    - rule: Sensitive File Access
+      desc: Detect access to sensitive files
+      condition: >
+        open_read and
+        container and
+        (fd.name startswith /etc/shadow or
+         fd.name startswith /etc/passwd or
+         fd.name startswith /etc/kubernetes/admin.conf)
+      output: >
+        Sensitive file accessed
+        (user=%user.name file=%fd.name
+         container=%container.name
+         image=%container.image.repository)
+      priority: CRITICAL
+      tags: [container, filesystem, mitre_credential_access]
+    
+    - rule: Kubectl Exec Detected
+      desc: Detect kubectl exec commands
+      condition: >
+        spawned_process and
+        container and
+        (proc.pname = "kubectl" or proc.aname[2] = "kubectl") and
+        proc.name != "kubectl"
+      output: >
+        Kubectl exec detected
+        (user=%user.name pod=%k8s.pod.name
+         ns=%k8s.ns.name command=%proc.cmdline)
+      priority: NOTICE
+      tags: [kubernetes, exec]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: falco
+  namespace: falco
+  labels:
+    app: falco
+spec:
+  selector:
+    matchLabels:
+      app: falco
+  template:
+    metadata:
+      labels:
+        app: falco
+    spec:
+      serviceAccountName: falco
+      hostNetwork: true
+      hostPID: true
+      # Prometheus scrape annotations
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8765"
+        prometheus.io/path: "/metrics"
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+      containers:
+        - name: falco
+          image: docker.io/falcosecurity/falco-no-driver:latest
+          args:
+            - /usr/bin/falco
+            - -c
+            - /etc/falco/falco.yaml
+            - -r
+            - /etc/falco/falco_rules.yaml
+            - -r
+            - /etc/falco/falco_rules.local.yaml
+          securityContext:
+            privileged: true
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          ports:
+            - containerPort: 8765
+              name: metrics
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/falco
+            - name: dev
+              mountPath: /host/dev
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: var-run
+              mountPath: /var/run
+      volumes:
+        - name: config
+          configMap:
+            name: falco-config
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: var-run
+          hostPath:
+            path: /var/run
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: falco
+  namespace: falco
+spec:
+  selector:
+    app: falco
+  ports:
+    - name: metrics
+      port: 8765
+      targetPort: 8765

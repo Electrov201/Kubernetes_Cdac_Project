@@ -1,0 +1,16 @@
+# =============================================================================
+# NFS StorageClass - For PV/PVC binding
+# =============================================================================
+# Note: This is a manual provisioner. For dynamic provisioning, 
+# you would need nfs-subdir-external-provisioner or similar.
+# =============================================================================
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-storage
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: kubernetes.io/no-provisioner  # Manual provisioning
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain

@@ -1,0 +1,9 @@
+# =============================================================================
+# Kubernetes Master Role - Handlers
+# =============================================================================
+---
+- name: Restart kubelet
+  systemd:
+    name: kubelet
+    state: restarted
+    daemon_reload: yes
