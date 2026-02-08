@@ -215,7 +215,7 @@ DevOps teams spend 60%+ of time on repetitive tasks instead of innovation. Manua
 > - **Automation**: Ansible 2.9+
 > - **CNI**: Flannel (optimized for low memory) or Calico
 > - **Monitoring**: Prometheus + Grafana
-> - **Storage**: NFS (can be TrueNAS)
+> - **Storage**: NFS (Ubuntu NFS Server)
 > - **Runtime Security**: Falco (optional)
 
 ---

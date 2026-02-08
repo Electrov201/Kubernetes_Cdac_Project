@@ -9,7 +9,7 @@ set -euo pipefail
 
 # Configuration
 BACKUP_DIR="/backup/etcd"
-NFS_BACKUP_DIR="/mnt/truenas/etcd-backups"
+NFS_BACKUP_DIR="/mnt/nfs/etcd-backups"
 RETENTION_HOURS=24
 RETENTION_DAYS=7
 DATE=$(date +%Y%m%d-%H%M%S)
@@ -59,7 +59,7 @@ else
     exit 1
 fi
 
-# Copy to NFS (TrueNAS) if available
+# Copy to NFS (Ubuntu NFS Server) if available
 if [ -d "${NFS_BACKUP_DIR}" ]; then
     if cp "${BACKUP_DIR}/${BACKUP_NAME}" "${NFS_BACKUP_DIR}/"; then
         log "Backup copied to NFS: ${NFS_BACKUP_DIR}/${BACKUP_NAME}"

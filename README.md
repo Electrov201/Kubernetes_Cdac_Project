@@ -59,7 +59,7 @@ Edit `ansible/group_vars/all.yml`:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `api_server_advertise_address` | Master node IP | 192.168.1.10 |
-| `nfs_server` | TrueNAS IP | 192.168.1.100 |
+| `nfs_server` | Ubuntu NFS Server IP | 192.168.1.100 |
 | `cni_plugin` | flannel or calico | flannel |
 | `enable_falco` | Enable runtime security | false |
 
@@ -96,7 +96,7 @@ See [Kubernetes_Cluster_Project_Document.md](docs/Kubernetes_Cluster_Project_Doc
 - ✅ **Automation**: Ansible-based deployment
 - ✅ **Monitoring**: Prometheus + Grafana
 - ✅ **Security**: PSS, Network Policies, RBAC, Firewall
-- ✅ **Storage**: TrueNAS NFS integration
+- ✅ **Storage**: Ubuntu NFS Server integration
 - ✅ **Self-Healing**: Liveness/Readiness probes
 - ✅ **Backup**: Automated etcd backup
 - ✅ **Runtime Security**: Falco (optional)
