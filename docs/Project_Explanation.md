@@ -772,6 +772,21 @@ pod-security.kubernetes.io/warn: baseline
 pod-security.kubernetes.io/audit: baseline
 ```
 
+#### What does "baseline" actually do?
+
+The `baseline` policy is the middle-tier security level. It is designed to prevent known privilege escalations while remaining "minimally restrictive" so most common apps still work without complex configuration.
+
+| Feature | Baseline Policy Action | Why? |
+|---------|-----------------------|------|
+| **Host Process** | ❌ **Blocked** | Prevents containers from accessing host-level processes. |
+| **Host Network/Ports** | ❌ **Blocked** | Prevents containers from sniffing host traffic or bypassing K8s network rules. |
+| **Privileged Containers** | ❌ **Blocked** | Prevents containers from having root-like access to the worker node. |
+| **Capabilities** | ⚠️ **Restricted** | Blocks dangerous Linux capabilities like `SYS_ADMIN` or `NET_ADMIN`. |
+| **HostPath Volumes** | ❌ **Restricted** | Prevents containers from reading/writing directly to the node's disk (e.g., `/etc/shadow`). |
+| **Seccomp** | ✅ **Allowed** | Uses the runtime default profile. |
+
+**In short:** If a developer tries to deploy a pod that says `privileged: true` or `hostNetwork: true` in the `default` namespace, **Kubernetes will reject it** because of this policy.
+
 ---
 
 ## Runtime Security with Falco
