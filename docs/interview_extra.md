@@ -1,0 +1,301 @@
+# Interview Preparation & Project Story Mode
+
+## 📖 Part 1: The "Story Mode" Project Flow
+
+**Interviewer:** "Tell me about your project flow. If a user accesses your application, what happens step-by-step?"
+
+**Your Answer (The Story):**
+
+"Imagine a user, let's call him Rahul, trying to access my web application deployed on my Kubernetes cluster. Here is the exact journey of his request through my infrastructure:"
+
+### 1. The Entry (DNS & Resolution)
+"First, Rahul types `www.myapp.com` in his browser.
+- **DNS Resolution**: The browser checks its cache, then queries the ISP's DNS. Eventually, it resolves the domain to the **Public IP** of my Load Balancer or Entry Node.
+- **Connection**: His browser initiates a TCP handshake (SYN, SYN-ACK, ACK) on port 80/443."
+
+### 2. The First Line of Defense (Perimeter Security)
+"Before the request even touches my application, it passes through my perimeter security:
+- **Firewall (UFW)**: I have configured `UFW` (Uncomplicated Firewall) on my Ubuntu nodes to **deny everything by default** and only allow specific ports (like 80, 443, and 6443 for K8s API only from admin IPs).
+- **DDoS Protection**: If this were a cloud setup, AWS Shield/WAF would filter bad traffic here. On-prem, my firewall rules drop malformed packets."
+
+### 3. Entering the Kubernetes Cluster (Ingress & Load Balancing)
+"The request hits my **Worker Node's Interface**.
+- **Kube-Proxy**: This component running on the node captures the traffic. It uses `iptables` or `IPVS` rules to route the packet.
+- **Service (NodePort/LoadBalancer)**: The request is directed to the Service IP. The Service acts as an internal load balancer, selecting a healthy Pod."
+
+### 4. Inside the Cluster (Zero Trust Networking)
+"Now the packet is inside the cluster network (managed by **Flannel** CNI in my project).
+- **Network Policies**: Before the packet reaches the Application Pod, it hits my **Network Policy**. I have a 'Default Deny' policy in place. The packet is allowed ONLY because I have an explicit `allow-ingress` rule for port 80. If this was a database connection attempt from an unknown pod, it would be strictly blocked here."
+
+### 5. Reaching the Application (The Workload)
+"The request finally reaches the **Nginx Pod**.
+- **Containerd**: The runtime that is actually running the container.
+- **Liveness/Readiness Probes**: Kubernetes (Kubelet) has already verified this pod is 'Ready' to serve traffic. If it was crashing, the Service wouldn't have sent the request here.
+- **The Response**: Nginx processes the request, maybe queries a database (which would go through another round of Network Policy checks), and sends back the HTML."
+
+### 6. The Watchers (security & Observability)
+"While all this is happening, silent guardians are watching:
+- **Prometheus**: Is scraping metrics. If the request latency spikes or errors increase, Prometheus records it.
+- **Grafana**: Is visualizing this data. If error rates cross a threshold, I get an alert.
+- **Falco (Runtime Security)**: This is crucial. If someone exploited a vulnerability in that Nginx pod and tried to spawn a shell (`/bin/sh`) or read sensitive files (`/etc/shadow`), **Falco** would detect this abnormal system call immediately and trigger a critical alert. This is my broad 'security camera' for the kernel."
+
+### 7. Persistence (The Backend)
+"If Rahul uploads a file, that data isn't lost if the pod restarts.
+- **PVC (PersistentVolumeClaim)**: The pod writes to a specific path.
+- **NFS Storage**: That path is actually mounted from my external **NFS Server**. The data is physically written to the NFS disk, ensuring persistence even if the entire cluster node goes down."
+
+---
+
+## 📝 Part 2: IDFC Interview Questions (12/02/2026)
+
+### ● L1 Prakash sir
+
+**1. Explain DNS in detail (how req pass from user to actual server)**
+*   **Answer**: "DNS (Domain Name System) is the phonebook of the internet. It translates human-readable names like `google.com` to IP addresses like `142.250.x.x`.
+    *   **Step 1: Local Cache**: Browser checks its own cache, then OS cache (`/etc/hosts`).
+    *   **Step 2: Resolver**: Request goes to ISP's DNS Resolver.
+    *   **Step 3: Root Server**: ISP asks Root server ('.'). It points to TLD server.
+    *   **Step 4: TLD Server**: Resolver asks TLD ('.com'). It points to Authoritative Name Server.
+    *   **Step 5: Authoritative Server**: Holds the actual record (A Record). Returns the IP.
+    *   **Real Time Ex**: In my project, I configure `/etc/hosts` for local DNS resolution between my Master and Worker nodes so they can talk by hostname."
+
+**2. What is DHCP?**
+*   **Answer**: "Dynamic Host Configuration Protocol. It automatically assigns IP addresses to devices on a network so they can communicate. Without it, you'd have to manually configure static IPs for every device."
+
+**3. Why we use port no?**
+*   **Answer**: "To identify a specific **service** or **process** running on a device. An IP address finds the *computer*, the Port finds the *application*.
+    *   **Example**: My server has IP `192.168.1.10`. Port `22` is the SSH door, Port `80` is the Web Server door."
+
+**4. Practical example of Linux and windows hardening?**
+*   **Answer**:
+    *   **Linux (My Project)**: "I used Ansible to automate Linux hardening:
+        1.  **SSH**: Disabled password auth (`PasswordAuthentication no`), disabled root login (`PermitRootLogin no`).
+        2.  **Firewall**: Enabled `UFW`, allowed only necessary ports.
+        3.  **Updates**: Automated `apt upgrade`."
+    *   **Windows**: "Disabling Guest account, enforcing password complexity via Group Policy, disabling unused services (like Print Spooler on servers)."
+
+**5. What is Active Directory (AD)?**
+*   **Answer**: "Microsoft's centralized database for managing users, computers, and policies in a network. It allows for 'Single Sign-On'—you log in once and get access to printers, file shares, and email."
+
+**6. Process of Authentication in AD?**
+*   **Answer**: "It uses **Kerberos**.
+    1.  User enters password.
+    2.  Client sends hash to Key Distribution Center (KDC/Domain Controller).
+    3.  If valid, KDC sends back a TGT (Ticket Granting Ticket).
+    4.  User shows TGT to access services without re-entering password."
+
+**7. Explain GPO (example of implementation)**
+*   **Answer**: "Group Policy Object. It's a set of rules applied to users/computers in AD.
+    *   **Example**: I can create a GPO to *force* a specific desktop wallpaper on all corporate laptops, or *disable* USB drives to prevent data theft."
+
+**8. Have you configured firewall rules?**
+*   **Answer**: "Yes, in this project I used `UFW` (Uncomplicated Firewall) via Ansible.
+    *   **Rule**: `ufw allow 6443/tcp` (Allow K8s API).
+    *   **Rule**: `ufw deny 23/tcp` (Block Telnet - insecure)."
+
+**9. What is header and payload?**
+*   **Answer**:
+    *   **Header**: The metadata (Source IP, Dest IP, Protocol). Like the address on an envelope.
+    *   **Payload**: The actual data (The HTML code, the image, the password). The letter inside the envelope."
+
+**10. Diff between IDS, IPS, and Firewall**
+*   **Answer**:
+    *   **Firewall**: The Gatekeeper. filters traffic based on IP/Port. (Allow/Block).
+    *   **IDS (Intrusion Detection)**: The Alarm. Anaylzes traffic for attacks and *alerts* you. (Passive).
+    *   **IPS (Intrusion Prevention)**: The Guard. Analyzes traffic and acts to *stop* the attack immediately. (Active).
+    *   **Project Ex**: Falco in my cluster acts like a host-based IDS, detecting suspicious syscalls."
+
+**11. OSI Model & Security in each layer**
+*   **Answer**:
+    1.  **Physical**: Physical locks, CCTV.
+    2.  **Data Link**: MAC Filtering, Port Security.
+    3.  **Network**: Firewalls (Packet filtering), IPsec.
+    4.  **Transport**: TLS/SSL (Encryption).
+    5.  **Session/Presentation/Application**: WAF (Web Application Firewall), Input validation.
+
+**12. TCP vs UDP**
+*   **Answer**:
+    *   **TCP**: Reliable, connection-oriented (3-way handshake). used for Web (HTTP), Email, File Transfer. "I want to be sure you got the message."
+    *   **UDP**: Unreliable, connectionless, fast. Used for Streaming, VoIP, DNS. "I'm shouting the message, hope you hear it."
+
+**13. What is proxy vs firewall?**
+*   **Answer**:
+    *   **Firewall**: Filters packets (IP/Port). Doesn't look deep inside.
+    *   **Proxy**: Acts as an intermediary. It terminates the connection, inspects the *content* (URL, data), and starts a new connection.
+    *   **Why Proxy**: For content filtering (block Facebook), caching (speed), and anonymity.
+
+**14. Explain working of DMZ**
+*   **Answer**: "Demilitarized Zone. A sub-network that sits between the unsafe Internet and the safe Internal Network. Public-facing services (Web Server, Email) go here. If a hacker compromises the Web Server in the DMZ, they still can't easily reach the internal Database."
+
+**15. Why use NAT?**
+*   **Answer**: "Network Address Translation.
+    1.  **Security**: Hides internal private IPs from the public internet.
+    2.  **ipv4 conservation**: Allows an entire office to share one Public IP."
+
+**16. VPN Types?**
+*   **Answer**:
+    *   **Site-to-Site**: Connects two offices (Branch to HQ).
+    *   **Remote Access**: Connects a user (working from home) to the office network."
+
+**17. Why use Load Balancers (Security perspective)?**
+*   **Answer**:
+    *   **DDoS mitigation**: Absorbs traffic spikes.
+    *   **Hiding Backend**: Hides the actual IP addresses of the application servers."
+
+**18. SASE / Netskope?**
+*   **Answer**: "SASE (Secure Access Service Edge) is the modern way. Instead of everyone VPNing back to the office firewall, security is done in the cloud. Netskope is a SASE vendor that provides CASB (Cloud Access Security Broker) to secure data in SaaS apps (like blocking upload of 'Confidential' docs to Google Drive)."
+
+### ● L2 Samarjit sir
+
+**1. Working of CSRF?**
+*   **Answer**: "Cross-Site Request Forgery. Attacker tricks a logged-in user into clicking a link that performs an action they didn't intend.
+    *   **Example**: I'm logged into my bank. I visit `evil.com`. It has a hidden script that sends a request `bank.com/transfer?to=hacker`. Since I'm logged in, the bank accepts it.
+    *   **Prevention**: Anti-CSRF Tokens."
+
+**2. How to perform SQL Injection (SQLi)?**
+*   **Answer**: "Injecting malicious SQL commands into input fields.
+    *   **Example**: Login field: `' OR 1=1 --`.
+    *   **Backend Process**: The query becomes `SELECT * FROM users WHERE user = '' OR 1=1 --`. Since `1=1` is always true, it logs me in as the admin.
+    *   **Prevention**: Parameterized queries (Prepared Statements)."
+
+**3. Working of WAF?**
+*   **Answer**: "Web Application Firewall. It operates at Layer 7. It inspects HTTP traffic for common attacks like SQLi, XSS. It uses 'Signatures' (known attack patterns) and 'Anomaly Detection' (unusual behavior)."
+
+**4. Where to find signatures?**
+*   **Answer**: "Signatures come from threat intelligence databases (like Cisco Talos, Snort rules). In IDS/IPS, they are updated via 'Feed Updates' from the vendor."
+
+**5. Senior disables WAF - what do you do?**
+*   **Answer**: "I would respectfully challenge it. 'Disabling the WAF exposes us to immediate 0-day attacks. If the application is blocked, let's put WAF in *Monitoring Mode* instead of disabling it, so we can see what's wrong without dropping security.' If he insists, I would document the risk via email to cover my liability."
+
+### ● L3 Harshad sir
+
+**1. How to write Snort rules?**
+*   **Answer**:
+    *   `action protocol source_ip source_port -> dest_ip dest_port (options)`
+    *   **Example**: `alert tcp any any -> any 80 (msg:"Possible SQL Injection"; content:"UNION SELECT"; sid:100001;)`
+
+**2. Drop vs Deny?**
+*   **Answer**:
+    *   **Drop**: Silently discards packet. Source gets no response (times out). *Preferable* for security (hides your existence).
+    *   **Deny (Reject)**: Discards packet but sends an error message (ICMP Unreachable) back. Good for debugging."
+
+**3. Project: How detailed 3-tier web app?**
+*   **Answer**: "In my Kubernetes project:
+    *   **Presentation Layer**: Nginx Deployment (Frontend).
+    *   **Logic Layer**: (Example) Python/NodeJS API Pods.
+    *   **Data Layer**: Database Pod (Postgres) with Persistent Storage (NFS).
+    *   **Isolation**: Used Network Policies so Frontend can talk to Logic, but Frontend CANNOT talk to Database directly."
+
+**4. Draw Network Architecture (Google Search)**
+*   **Answer**: "User PC -> Gateway/Router -> ISP -> Google Public IP -> Google Load Balancer -> Front End Server."
+
+**5. What is DLP?**
+*   **Answer**: "Data Loss Prevention. Software that detects and blocks sensitive data (Credit Cards, SSNs) from leaving the organization (via Email, USB, Uploads)."
+
+**6. Firewall vs Proxy?**
+*   **Answer**: (Already covered above). "We need Proxy *with* Firewall because Firewall only checks Ports. Proxy checks *Content*. A firewall allows traffic to port 80. A proxy checks if that traffic is a virus downloading."
+
+### ● L4 Anil sir
+
+**2. Firewall vs Antivirus?**
+*   **Answer**:
+    *   **Firewall**: Stops bad guys from *entering* the house. (Network layer).
+    *   **Antivirus**: Stops the thief who *already got inside* or was brought in on a USB stick. (File/Host layer).
+    *   **Why both?**: Defense in depth. If a user downloads a virus (allowed by firewall), Antivirus must catch it."
+
+**4. Security checks in organization?**
+*   **Answer**: "Password policies, MFA (Multi-Factor Auth), Regular Patching, Phishing simulations, Access Reviews (Least Privilege)."
+
+**5. As employee, precautions?**
+*   **Answer**: "Never share passwords. Lock screen when away. Don't click unknown usage links (Phishing). Report strange incidents immediately."
+
+**6. Day to day security?**
+*   **Answer**: "I use a Password Manager (Bitwarden). I enable 2FA on all accounts. I verify URLs before clicking. I keep my OS/Phone updated."
+
+**7. Recent Tech in Security?**
+*   **Answer**: "**Zero Trust Architecture**. The idea involves 'Never Trust, Always Verify'. Even if you are inside the office network, you don't get access until you authenticate for that specific resource. My project implements this using Kubernetes Network Policies."
+
+---
+
+## 📝 Part 3: Kyndryl Interview Questions
+
+**1. What is DevOps & CI/CD?**
+*   **DevOps**: "Cultural practice bridging Development and Operations to shorten development lifecycles."
+*   **CI/CD**: "Continuous Integration (Auto-testing code when committed) and Continuous Deployment (Auto-pushing code to production). In my project, Ansible acts as the CD tool."
+
+**3. Common Linux Commands**
+*   `ls -lah` (List all)
+*   `ps aux` (Process status)
+*   `netstat -tuln` (Check listening ports)
+*   `chmod / chown` (Permissions)
+*   `grep` (Search)
+*   `top / htop` (Monitoring)
+
+**4. SSL vs TLS & Handshake**
+*   **TLS** is the successor to SSL (which is deprecated/insecure).
+*   **Handshake**:
+    1.  Client Hello (I support TLS 1.2).
+    2.  Server Hello (Let's use TLS 1.2, Here is my Certificate).
+    3.  Client Verify (Checks Cert with CA).
+    4.  Key Exchange (Generate Session Key).
+
+**5. Encoding vs Encryption vs Hashing**
+*   **Encoding** (Base64): Functionality. Transforming data format. Reversible publicly.
+*   **Encryption** (AES): Confidentiality. Scrambling data with a key. Reversible only with key.
+*   **Hashing** (SHA256): Integrity. One-way fingerprint. Irreversible.
+
+**6. Can we retrieve file from Hash?**
+*   **No**. It is one-way. You can only verify integrity, not reverse it.
+
+**8. TCP/IP Layers**
+*   Application (HTTP)
+*   Transport (TCP/UDP)
+*   Network (IP)
+*   Network Access (Ethernet)
+
+**10. MITRE ATT&CK?**
+*   "A knowledge base of adversary tactics and techniques.
+    *   **Phases**: Reconnaissance -> Initial Access -> Execution -> Persistence -> Priv Escalation... -> Impact."
+
+**12. What is Nmap?**
+*   "Network Mapper. Used for network discovery and security auditing.
+    *   **Command**: `nmap -sS -p- -A <target_ip>` (Stealth scan, all ports, OS detection)."
+
+---
+
+## 📝 Part 4: Esec Forte Questions
+
+**2. Risk, Threat, Vulnerability**
+*   **Vulnerability**: A weakness (Open door).
+*   **Threat**: Someone who can exploit it (Burglar).
+*   **Risk**: The probability of loss (Likelihood of burglary * Value of items).
+
+**3. Symmetric vs Asymmetric**
+*   **Symmetric**: Same key for encryption and decryption (Faster). Example: AES.
+*   **Asymmetric**: Public Key encrypts, Private Key decrypts (Slower). Example: RSA, SSH keys.
+
+**4. How to secure a server?**
+*   "1. Update OS. 2. Disable unused services. 3. Configure Firewall. 4. SSH Hardening (Keys only). 5. Install IDS/Fail2ban. 6. Log monitoring."
+
+**9. What is SQL Injection?**
+*   (Covered in IDFC section).
+
+**11. What is an API?**
+*   "Application Programming Interface. It allows two software programs to talk to each other. Like a waiter in a restaurant taking order from customer (User) to kitchen (Server)."
+
+---
+
+## 🧘 Part 5: Personal & HR Questions (Guidance)
+
+**L4 Q8: Family members / Q9: Distance to Pune**
+*   **Tip**: Answer honestly but briefly. These questions are often to check stability (e.g., if you live far away, will you relocate? If you have family support?).
+*   **Distance**: "My hometown is [City], which is about [X] km from Pune. I am comfortable with relocation/traveling."
+
+**L5 HR Q1: Introduce yourself**
+*   **Framework**: "I am [Name], a [Your Role/Student] with a strong interest in [Security/DevOps]. I recently completed a project where I automated a Kubernetes cluster using Ansible, implementing security best practices like CIS benchmarks and Falco. I enjoy solving infrastructure challenges and am looking for a role where I can apply my skills in cloud security."
+
+**L5 HR Q3: Project out of comfort zone?**
+*   **Answer**: "Yes. Actually, this Kubernetes project was initially out of my comfort zone. I had to learn Ansible and Falco from scratch. I broke the problem down, read the documentation, and successfully built a production-ready cluster. It taught me that I can pick up new tools quickly."
+
+**L5 HR Q6: Relocation?**
+*   **Answer**: "Yes, I am open to relocation."
