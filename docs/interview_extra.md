@@ -82,9 +82,9 @@
 
 ---
 
-## 📝 Part 2: IDFC Interview Questions (12/02/2026)
+## 📝 Part 2: Interview Questions - Set 1 (General Network & Security)
 
-### ● L1 Prakash sir
+### ● Technical Round 1
 
 **1. Explain DNS in detail (how req pass from user to actual server)**
 *   **Answer**: "DNS (Domain Name System) is the phonebook of the internet. It translates human-readable names like `google.com` to IP addresses like `142.250.x.x`.
@@ -181,7 +181,7 @@
 **18. SASE / Netskope?**
 *   **Answer**: "SASE (Secure Access Service Edge) is the modern way. Instead of everyone VPNing back to the office firewall, security is done in the cloud. Netskope is a SASE vendor that provides CASB (Cloud Access Security Broker) to secure data in SaaS apps (like blocking upload of 'Confidential' docs to Google Drive)."
 
-### ● L2 Samarjit sir
+### ● Technical Round 2
 
 **1. Working of CSRF?**
 *   **Answer**: "Cross-Site Request Forgery. Attacker tricks a logged-in user into clicking a link that performs an action they didn't intend.
@@ -203,7 +203,7 @@
 **5. Senior disables WAF - what do you do?**
 *   **Answer**: "I would respectfully challenge it. 'Disabling the WAF exposes us to immediate 0-day attacks. If the application is blocked, let's put WAF in *Monitoring Mode* instead of disabling it, so we can see what's wrong without dropping security.' If he insists, I would document the risk via email to cover my liability."
 
-### ● L3 Harshad sir
+### ● Technical Round 3
 
 **1. How to write Snort rules?**
 *   **Answer**:
@@ -231,7 +231,7 @@
 **6. Firewall vs Proxy?**
 *   **Answer**: (Already covered above). "We need Proxy *with* Firewall because Firewall only checks Ports. Proxy checks *Content*. A firewall allows traffic to port 80. A proxy checks if that traffic is a virus downloading."
 
-### ● L4 Anil sir
+### ● Managerial Round
 
 **2. Firewall vs Antivirus?**
 *   **Answer**:
@@ -253,7 +253,7 @@
 
 ---
 
-## 📝 Part 3: Kyndryl Interview Questions
+## 📝 Part 3: Interview Questions - Set 2 (DevOps & Linux)
 
 **1. What is DevOps & CI/CD?**
 *   **DevOps**: "Cultural practice bridging Development and Operations to shorten development lifecycles."
@@ -299,7 +299,7 @@
 
 ---
 
-## 📝 Part 4: Esec Forte Questions
+## 📝 Part 4: Interview Questions - Set 3 (Security Concepts)
 
 **2. Risk, Threat, Vulnerability**
 *   **Vulnerability**: A weakness (Open door).
@@ -314,7 +314,7 @@
 *   "1. Update OS. 2. Disable unused services. 3. Configure Firewall. 4. SSH Hardening (Keys only). 5. Install IDS/Fail2ban. 6. Log monitoring."
 
 **9. What is SQL Injection?**
-*   (Covered in IDFC section).
+*   (Covered in Set 1 section).
 
 **11. What is an API?**
 *   "Application Programming Interface. It allows two software programs to talk to each other. Like a waiter in a restaurant taking order from customer (User) to kitchen (Server)."
@@ -323,15 +323,15 @@
 
 ## 🧘 Part 5: Personal & HR Questions (Guidance)
 
-**L4 Q8: Family members / Q9: Distance to Pune**
+**Managerial Round Q8: Family members / Q9: Distance to Location**
 *   **Tip**: Answer honestly but briefly. These questions are often to check stability (e.g., if you live far away, will you relocate? If you have family support?).
-*   **Distance**: "My hometown is [City], which is about [X] km from Pune. I am comfortable with relocation/traveling."
+*   **Distance**: "My hometown is [City], which is about [X] km from the office. I am comfortable with relocation/traveling."
 
-**L5 HR Q1: Introduce yourself**
+**HR Round Q1: Introduce yourself**
 *   **Framework**: "I am [Name], a [Your Role/Student] with a strong interest in [Security/DevOps]. I recently completed a project where I automated a Kubernetes cluster using Ansible, implementing security best practices like CIS benchmarks and Falco. I enjoy solving infrastructure challenges and am looking for a role where I can apply my skills in cloud security."
 
-**L5 HR Q3: Project out of comfort zone?**
+**HR Round Q3: Project out of comfort zone?**
 *   **Answer**: "Yes. Actually, this Kubernetes project was initially out of my comfort zone. I had to learn Ansible and Falco from scratch. I broke the problem down, read the documentation, and successfully built a production-ready cluster. It taught me that I can pick up new tools quickly."
 
-**L5 HR Q6: Relocation?**
+**HR Round Q6: Relocation?**
 *   **Answer**: "Yes, I am open to relocation."
