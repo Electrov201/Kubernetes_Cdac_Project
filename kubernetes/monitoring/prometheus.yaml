@@ -45,17 +45,17 @@ data:
     global:
       scrape_interval: 30s
       evaluation_interval: 30s
-    
+
     # Load alerting rules from file
     rule_files:
       - /etc/prometheus/alerts/*.yml
-    
+
     scrape_configs:
       # Prometheus self-monitoring
       - job_name: 'prometheus'
         static_configs:
           - targets: ['localhost:9090']
-      
+
       # Kubernetes API servers
       - job_name: 'kubernetes-apiservers'
         kubernetes_sd_configs:
@@ -68,7 +68,7 @@ data:
           - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
             action: keep
             regex: default;kubernetes;https
-      
+
       # Kubernetes nodes via API proxy
       - job_name: 'kubernetes-nodes'
         kubernetes_sd_configs:
@@ -87,7 +87,7 @@ data:
             regex: (.+)
             target_label: __metrics_path__
             replacement: /api/v1/nodes/${1}/proxy/metrics
-      
+
       # Node Exporter - direct scrape on port 9100
       - job_name: 'node-exporter'
         kubernetes_sd_configs:
@@ -101,7 +101,7 @@ data:
             regex: __meta_kubernetes_node_label_(.+)
           - source_labels: [__meta_kubernetes_node_name]
             target_label: node
-      
+
       # Falco Runtime Security - Security alerts
       - job_name: 'falco'
         kubernetes_sd_configs:
@@ -114,10 +114,10 @@ data:
             action: keep
             regex: falco
           - source_labels: [__address__]
-            regex: '([^:]+)(?::\\d+)?'
+            regex: '([^:]+)(?::\d+)?'
             replacement: '${1}:8765'
             target_label: __address__
-      
+
       # Kube-State-Metrics - Kubernetes object metrics
       - job_name: 'kube-state-metrics'
         static_configs:
@@ -174,7 +174,8 @@ spec:
           configMap:
             name: prometheus-alerts
         - name: storage
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: prometheus-pvc
 ---
 apiVersion: v1
 kind: Service

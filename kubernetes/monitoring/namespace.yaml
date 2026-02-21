@@ -1,5 +1,9 @@
 # =============================================================================
-# Monitoring Namespace
+# Monitoring Namespace - with Pod Security Standards
+# =============================================================================
+# Using "privileged" enforce because node-exporter requires:
+#   hostPID, hostIPC, hostNetwork for host-level metrics collection
+# Warnings are set to "baseline" to flag non-essential privileged workloads
 # =============================================================================
 apiVersion: v1
 kind: Namespace
@@ -7,5 +11,6 @@ metadata:
   name: monitoring
   labels:
     name: monitoring
-    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce: privileged
     pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/audit: baseline

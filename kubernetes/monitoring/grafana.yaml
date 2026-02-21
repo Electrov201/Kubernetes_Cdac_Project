@@ -64,6 +64,7 @@ spec:
               mountPath: /var/lib/grafana/dashboards
             - name: storage
               mountPath: /var/lib/grafana
+              subPath: grafana
           readinessProbe:
             httpGet:
               path: /api/health
@@ -87,7 +88,8 @@ spec:
           configMap:
             name: grafana-dashboards
         - name: storage
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: grafana-pvc
 ---
 apiVersion: v1
 kind: Service

@@ -1,7 +1,7 @@
 # =============================================================================
 # Prometheus Alerting Rules - Essential Cluster Alerts
 # =============================================================================
-# These rules enable proactive incident detection (claimed in interview doc)
+# These rules enable proactive incident detection
 # =============================================================================
 ---
 apiVersion: v1
@@ -106,38 +106,47 @@ data:
               description: "Deployment does not have the expected number of replicas."
 
       # =====================================================================
-      # etcd Backup Alerts (Disaster Recovery)
+      # Prometheus Target Alerts
       # =====================================================================
-      - name: etcd-backup-alerts
+      - name: target-alerts
         rules:
-          - alert: EtcdBackupMissing
-            expr: time() - etcd_backup_last_success_timestamp_seconds > 7200
+          - alert: TargetDown
+            expr: up == 0
             for: 5m
             labels:
               severity: critical
             annotations:
-              summary: "etcd backup is overdue"
-              description: "No successful etcd backup in the last 2 hours."
+              summary: "Target {{ $labels.job }}/{{ $labels.instance }} is down"
+              description: "{{ $labels.job }} target {{ $labels.instance }} has been unreachable for more than 5 minutes."
+
+          - alert: PrometheusTargetMissing
+            expr: up{job="kube-state-metrics"} == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Kube-State-Metrics target is down"
+              description: "Kube-State-Metrics has been unreachable — Kubernetes object metrics are unavailable."
 
       # =====================================================================
       # Application Alerts (Nginx)
       # =====================================================================
       - name: application-alerts
         rules:
-          - alert: NginxDown
-            expr: up{job="nginx"} == 0
-            for: 2m
-            labels:
-              severity: critical
-            annotations:
-              summary: "Nginx service is down"
-              description: "Nginx has been unreachable for more than 2 minutes."
-
-          - alert: HighNginxLatency
-            expr: histogram_quantile(0.95, rate(nginx_http_request_duration_seconds_bucket[5m])) > 2
+          - alert: NginxPodsUnavailable
+            expr: kube_deployment_status_available_replicas{deployment="nginx"} < kube_deployment_spec_replicas{deployment="nginx"}
             for: 5m
             labels:
               severity: warning
             annotations:
-              summary: "High latency on Nginx"
-              description: "95th percentile latency is above 2 seconds."
+              summary: "Nginx deployment has unavailable replicas"
+              description: "Not all Nginx replicas are available for more than 5 minutes."
+
+          - alert: NginxNoRunningPods
+            expr: kube_deployment_status_available_replicas{deployment="nginx"} == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Nginx has no running pods"
+              description: "All Nginx pods are down — service is unavailable."
