@@ -507,9 +507,11 @@ NFS Server (/srv/nfs/kubernetes/prometheus)
 |---------|----------|-----------|---------|
 | nfs-prometheus-pv | 5Gi | prometheus-pvc | Metrics storage |
 | nfs-grafana-pv | 2Gi | grafana-pvc | Dashboard config |
-| nfs-nginx-pv | 1Gi | nginx-pvc | Web content |
+| nfs-nginx-pv | 1Gi | nginx-pvc | Web content (`/usr/share/nginx/html`) |
 
 **Access Mode**: `ReadWriteMany (RWX)` - Multiple pods can mount simultaneously
+
+> **Note**: Nginx uses `nginx-pvc` specifically for web content persistence. Its cache (`/var/cache/nginx`) and runtime (`/var/run`) volumes remain as `emptyDir` since they hold ephemeral, node-specific data that doesn't need persistence.
 
 ---
 
@@ -1012,8 +1014,7 @@ This project combines all these skills in a practical, deployable solution.
 | NodePort | Ingress Controller + LoadBalancer |
 | 8GB RAM | 16GB+ per node |
 | Flannel | Calico (for Network Policies) |
-| emptyDir for Prometheus | PersistentVolume with proper retention |
-| Single NFS | Replicated storage (Ceph, Longhorn) |
+| NFS (single server) | NFS HA (DRBD + Pacemaker) or multiple NFS exports |
 
 ---
 

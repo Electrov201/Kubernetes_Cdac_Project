@@ -95,7 +95,8 @@ spec:
               mountPath: /html
       volumes:
         - name: nginx-html
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: nginx-pvc
         - name: nginx-cache
           emptyDir: {}
         - name: nginx-run

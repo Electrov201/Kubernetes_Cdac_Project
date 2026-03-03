@@ -385,7 +385,7 @@ graph LR
 | **Visualization** | Grafana | Rich dashboards, multi-datasource, free & open-source |
 | **Node Metrics** | Node Exporter | Exposes hardware/OS metrics for Prometheus |
 | **K8s Metrics** | Kube-State-Metrics | Exposes Kubernetes object state as metrics |
-| **Web Server** | Nginx (unprivileged) | PSS-compliant sample workload with self-healing |
+| **Web Server** | Nginx (unprivileged) | PSS-compliant sample workload with self-healing + NFS persistence |
 | **Storage** | NFS | ReadWriteMany support, simple, external to cluster |
 | **Runtime Security** | Falco | Syscall-level threat detection via eBPF |
 | **Firewall** | UFW | Ubuntu-native, simple rule management |
@@ -408,6 +408,13 @@ graph LR
         RS["<b>RollingUpdate</b>\nmaxSurge: 1\nmaxUnavailable: 0\n\nZero-downtime deployments"]
     end
 
+    subgraph PERSIST["💾 Persistent Storage"]
+        direction TB
+        NGINX_V["<b>Nginx Web Content</b>\nnginx-pvc → NFS 1Gi\n/usr/share/nginx/html"]
+        PROM_V["<b>Prometheus Data</b>\nprometheus-pvc → NFS 5Gi"]
+        GRAF_V["<b>Grafana Data</b>\ngrafana-pvc → NFS 2Gi"]
+    end
+
     subgraph BACKUP_S["💾 etcd Backup"]
         direction TB
         CRON_S["Cron: Every hour"]
@@ -422,6 +429,7 @@ graph LR
 
     style PROBES fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
     style STRATEGY fill:#fff9c4,stroke:#f9a825,stroke-width:2px
+    style PERSIST fill:#fff3e0,stroke:#e65100,stroke-width:2px
     style BACKUP_S fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
 ```
 
@@ -513,8 +521,8 @@ Kubernetes_Cdac_Project/
 │   │   ├── 📄 grafana-dashboards.yaml       # Pre-built dashboard JSONs
 │   │   ├── 📄 kube-state-metrics.yaml       # RBAC + Deployment + Service
 │   │   └── 📄 node-exporter.yaml            # DaemonSet + Service
-│   ├── 📂 nginx/                            # Sample workload
-│   │   └── 📄 deployment.yaml              # PSS-compliant Deployment + Service
+│   ├── 📂 nginx/                            # Sample workload (NFS-persistent)
+│   │   └── 📄 deployment.yaml              # PSS-compliant Deployment + Service + PVC
 │   ├── 📂 security/                         # Cluster security policies
 │   │   ├── 📄 network-policy.yaml           # default-deny + allow rules
 │   │   └── 📄 pss-rbac.yaml                # PSS labels + RBAC role/binding
@@ -567,7 +575,7 @@ All settings live in `ansible/group_vars/all.yml`:
 
 | Component | Current | Scaling Method | Notes |
 |-----------|:-------:|----------------|-------|
-| **Nginx** | 2 replicas | `kubectl scale deployment nginx --replicas=N` | ✅ Manual horizontal scaling |
+| **Nginx** | 2 replicas | `kubectl scale deployment nginx --replicas=N` | ✅ Manual horizontal scaling, data persists via NFS PVC |
 | **Node Exporter** | DaemonSet | Auto-scales with nodes | ✅ Automatic |
 | **Falco** | DaemonSet | Auto-scales with nodes | ✅ Automatic |
 | **Prometheus** | 1 replica | Single instance by design | ⚠️ Thanos needed for HA |

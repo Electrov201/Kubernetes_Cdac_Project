@@ -644,6 +644,13 @@ flowchart TD
     subgraph "Auto-Recovery"
         E[Pod Deleted] --> F[ReplicaSet detects]
         F --> G[Creates new Pod]
+        G --> H[Mounts nginx-pvc from NFS]
+        H --> I[Web content persists]
+    end
+
+    subgraph "Persistent Storage"
+        J[nginx-pvc 1Gi] -->|NFS| K["/srv/nfs/kubernetes/nginx"]
+        L["nginx-cache emptyDir"] -.->|Ephemeral| M["Recreated per pod"]
     end
 ```
 
@@ -653,6 +660,16 @@ flowchart TD
 |-------|------|------|---------------|--------|-------------------|
 | livenessProbe | / | 8080 | 10s | 5s | 3 |
 | readinessProbe | / | 8080 | 5s | 3s | Default |
+
+### Persistent Storage
+
+Nginx web content is stored on NFS via the `nginx-pvc` PersistentVolumeClaim, ensuring data persists across pod restarts and rescheduling:
+
+| Volume | Mount Path | Type | Purpose |
+|--------|-----------|------|--------|
+| `nginx-html` | `/usr/share/nginx/html` | **PVC (`nginx-pvc`)** | Web content — persists across restarts |
+| `nginx-cache` | `/var/cache/nginx` | emptyDir | Ephemeral cache — recreated per pod |
+| `nginx-run` | `/var/run` | emptyDir | PID file — node-specific runtime data |
 
 ### Security Context (PSS Compliant)
 
