@@ -11,7 +11,24 @@
 
 ---
 
-## 📐 Project Architecture at a Glance
+## � Pitch Decoder: How to Answer Follow-up Questions
+
+If the interviewer stops you and asks, *"Exactly how did you implement `[Buzzword]`?"*, here is your exact technical answer:
+
+| You said... | The Interviewer asks... | Your Technical Answer |
+|-------------|-------------------------|-----------------------|
+| **"Ansible"** | *What Ansible command did you run?* | "I structured the project into roles (`common`, `k8s_master`, etc.) and ran a single command: `ansible-playbook -i inventory/hosts.ini site.yml`. It handles everything via SSH." |
+| **"Master & Worker"** | *How did you join the worker?* | "My Ansible playbook runs `kubeadm init` on the master, captures the output token, and passes it to the worker using `kubeadm join <master-ip>:6443 --token <token>`." |
+| **"Prometheus & Grafana"** | *How were they deployed?* | "Using native Kubernetes manifests. I applied them with `kubectl apply -f /opt/kubernetes/monitoring/`. I didn't use Helm because I wanted explicit control over the resource limits for my 8GB RAM constraint." |
+| **"Node Exporter"** | *How does it get OS metrics?* | "It runs as a `DaemonSet` using `hostNetwork: true` and mounts the node's `/proc` and `/sys` directories to read kernel and hardware metrics." |
+| **"Self-healing"** | *How exactly does it self-heal?* | "My Nginx deployment uses `livenessProbe` (HTTP GET on port 8080). If it fails 3 times, the kubelet restarts the container. If the entire pod dies, the `ReplicaSet` recreates it." |
+| **"Falco via syscalls"** | *How does Falco intercept syscalls?* | "Falco runs as a privileged `DaemonSet`. It uses an **eBPF probe** attached to the Linux kernel to monitor system calls (like a shell spawning) without modifying the kernel itself." |
+| **"HPA & VPA"** | *What metrics do they scale on?* | "They rely on the `metrics-server` pod. The HPA scales *horizontally* based on average CPU utilization hitting 70%. The VPA scales *vertically* by adjusting the container's CPU/RAM `requests` based on historical usage." |
+| **"Persistent storage"** | *How is data persistent?* | "I set up an external NFS server. In Kubernetes, I created a `StorageClass`, a `PersistentVolume` (PV), and bound my Nginx pods to it using a `PersistentVolumeClaim` (PVC) mounted at `/usr/share/nginx/html`." |
+
+---
+
+## �📐 Project Architecture at a Glance
 
 ```
    ANSIBLE CONTROL MACHINE
