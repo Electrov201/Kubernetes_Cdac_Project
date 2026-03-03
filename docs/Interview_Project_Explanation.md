@@ -7,7 +7,7 @@
 
 ## 🗣️ The 2-Minute Pitch
 
-> "I built a **fully automated Kubernetes cluster deployment** using **Ansible**. With a **single command** — `ansible-playbook site.yml` — it sets up a complete Kubernetes v1.29 cluster on Ubuntu 22.04 with **monitoring** (Prometheus + Grafana), **4-layer security** (UFW + RBAC + Network Policies + Falco runtime detection), **NFS persistent storage**, **self-healing workloads**, and **automated etcd backups**. The entire setup is optimized for an **8GB RAM, 2-node lab environment** while following **production-grade practices** like CIS Kubernetes Benchmarks."
+> "I built a fully automated Kubernetes infrastructure that provisions in minutes using **Ansible**. The architecture consists of Master and Worker nodes connected to an NFS external storage server. For observability, I deployed **Grafana and Prometheus** along with **Node Exporter**, which pulls underlying OS metrics from files and feeds them to Grafana for dashboards. The cluster features **self-healing pods** and a strong security posture, notably using **Falco** to monitor pod behavior and detect runtime threats via syscalls. I've also implemented autoscaling for my Nginx web application — both **Horizontal Pod Autoscaler (HPA)** for handling traffic spikes and **Vertical Pod Autoscaler (VPA)** for right-sizing resources — while ensuring all web data remains entirely **persistent** across pod restarts."
 
 ---
 
@@ -37,8 +37,15 @@
                              │  Nginx (x2)    :30080          │
                              │  Node Exporter :9100           │
                              │  KSM           :8080           │
-                             │  Falco (DaemonSet)             │
+                             │  Falco         (DaemonSet)     │
+                             │  Metrics Server                │
                              └──────────┬────────────────────┘
+                                        │
+                         ┌──────────────┴──────────────┐
+                         │       AUTOSCALING           │
+                         │   HPA: Scales Nginx replicas│
+                         │   VPA: Tunes CPU/RAM limits │
+                         └──────────────┬──────────────┘
                                         │
                                         │ PVC (NFS)
                                         ▼
@@ -215,6 +222,25 @@ kubectl get pv                       # Check PersistentVolumes
 kubectl get pvc --all-namespaces     # Check claims are Bound
 kubectl describe pod -l app=nginx | grep -A10 Volumes   # Verify nginx PVC mount
 ```
+
+---
+
+## 🚀 Autoscaling Implementation (HPA & VPA)
+
+To ensure the Nginx application can handle dynamic traffic without wasting cluster resources, I implemented a dual autoscaling approach:
+
+### 1. Horizontal Pod Autoscaler (HPA)
+**Purpose:** Scales the *number* of Nginx replicas based on CPU utilization.
+- **Metric:** Targets 70% average CPU utilization across all Nginx pods.
+- **Action:** If traffic spikes and CPU goes above 70%, HPA instructs the ReplicaSet to spin up more Nginx pods (e.g., matching a max of 5 replicas).
+- **Why it matters:** Ensures the app remains responsive during traffic bursts without manual intervention.
+
+### 2. Vertical Pod Autoscaler (VPA)
+**Purpose:** Scales the *size* (Requests/Limits) of the Nginx containers based on historical usage.
+- **Action:** Constantly monitors the actual CPU/Memory consumed by Nginx. If the container consistently needs more memory or is over-provisioned, VPA automatically updates the pod spec to the optimal size.
+- **Why it matters:** Prevents "Out of Memory" (OOM) kills and ensures we aren't reserving RAM/CPU that the pod doesn't actually need.
+
+*Note: Both HPA and VPA rely on the `metrics-server` component to function, which aggregates resource usage data directly from the kubelet on the worker nodes.*
 
 ---
 
