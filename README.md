@@ -141,7 +141,11 @@ graph TB
     class NGINX app
 ```
 
+<br/>
+
 ---
+
+<br/>
 
 ## ⚙️ Automation Flow — What Happens When You Run `site.yml`
 
