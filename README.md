@@ -44,77 +44,85 @@
 graph TB
     subgraph CONTROL["🎛️ Ansible Control Machine"]
         direction LR
-        CMD["$ ansible-playbook site.yml"]
+        CMD["<b>$ ansible-playbook site.yml</b><br/>One command deploys entire cluster"]
     end
 
-    subgraph CLUSTER["☸️ Kubernetes Cluster v1.29"]
+    subgraph CLUSTER["☸️ Kubernetes Cluster v1.29 — Ubuntu 22.04 LTS"]
         direction TB
-        
-        subgraph MASTER["🖥️ Master Node — 192.168.144.130"]
-            direction TB
-            API["🔌 API Server\n:6443"]
-            ETCD["💾 etcd\n:2379"]
-            SCHED["📋 Scheduler"]
-            CM["🔄 Controller\nManager"]
+
+        subgraph MASTER["🖥️ Master Node — 192.168.144.130<br/>4 GB RAM • 2 vCPU • 30 GB Disk"]
+            direction LR
+            API["🔌 <b>API Server</b><br/>Port: 6443<br/>Cluster gateway"]
+            ETCD["💾 <b>etcd</b><br/>Port: 2379<br/>Cluster state DB"]
+            SCHED["📋 <b>Scheduler</b><br/>Pod placement<br/>decisions"]
+            CM["🔄 <b>Controller</b><br/><b>Manager</b><br/>Self-healing loop"]
         end
 
-        subgraph WORKER["🖥️ Worker Node — 192.168.144.134"]
-            direction TB
-            KP["🔀 kube-proxy"]
-            KL["⚙️ kubelet"]
+        subgraph WORKER["🖥️ Worker Node — 192.168.144.134<br/>4 GB RAM • 2 vCPU • 30 GB Disk"]
+            direction LR
+            KL["⚙️ <b>kubelet</b><br/>Pod lifecycle<br/>manager"]
+            KP["🔀 <b>kube-proxy</b><br/>Service routing<br/>iptables rules"]
+            CRT["📦 <b>containerd</b><br/>Container runtime<br/>CRI-compliant"]
         end
 
         subgraph NETWORK["🌐 Flannel CNI — 10.244.0.0/16 VXLAN Overlay"]
             direction LR
-            NET_NOTE["Pod-to-Pod networking across nodes"]
+            NET_NOTE["Pod-to-Pod networking across nodes • ~50MB RAM per node"]
         end
     end
 
     subgraph SERVICES["📦 Deployed Services"]
         direction TB
-        
-        subgraph MON["📊 Monitoring Stack"]
+
+        subgraph MON["📊 Monitoring Stack — namespace: monitoring"]
             direction LR
-            PROM["Prometheus\n:30090"]
-            GRAF["Grafana\n:30300"]
-            NE["Node Exporter\n:9100"]
-            KSM["Kube-State\nMetrics :8080"]
+            PROM["<b>Prometheus</b><br/>NodePort :30090<br/>Scrape interval: 30s<br/>Retention: 2d / 500MB"]
+            GRAF["<b>Grafana</b><br/>NodePort :30300<br/>4 pre-built dashboards<br/>Login: admin/admin"]
         end
 
-        subgraph APP["🚀 Application"]
-            NGINX["Nginx x2\n:30080"]
+        subgraph METRICS["📈 Metrics Exporters — namespace: monitoring"]
+            direction LR
+            NE["<b>Node Exporter</b><br/>Port :9100<br/>DaemonSet<br/>CPU, RAM, Disk, Net"]
+            KSM["<b>Kube-State-Metrics</b><br/>Port :8080<br/>Deployment<br/>Pod, Deploy, Node state"]
         end
 
-        subgraph SEC["🛡️ Security"]
-            FALCO["Falco\nDaemonSet"]
-            NP["Network\nPolicies"]
-            PSS["Pod Security\nStandards"]
+        subgraph APP["🚀 Application — namespace: default"]
+            direction LR
+            NGINX["<b>Nginx x2 replicas</b><br/>NodePort :30080<br/>PSS-compliant<br/>Liveness + Readiness probes<br/>NFS persistent web content"]
+        end
+
+        subgraph SEC["🛡️ Security Layer"]
+            direction LR
+            FALCO["<b>Falco</b><br/>DaemonSet<br/>namespace: falco<br/>Runtime threat detection"]
+            NP["<b>Network Policies</b><br/>default-deny-ingress<br/>allow-nginx :8080<br/>allow-prometheus-scrape"]
+            PSS["<b>Pod Security</b><br/><b>Standards</b><br/>enforce: baseline<br/>warn: restricted"]
+            RBAC["<b>RBAC</b><br/>pod-reader Role<br/>developer Binding<br/>Least-privilege"]
         end
     end
 
-    subgraph STORAGE["💾 NFS Server — 192.168.144.132"]
+    subgraph STORAGE["💾 NFS Server — 192.168.144.132<br/>External Persistent Storage"]
         direction TB
-        NFS1["/srv/nfs/kubernetes/prometheus — 5Gi"]
-        NFS2["/srv/nfs/kubernetes/grafana — 2Gi"]
-        NFS3["/srv/nfs/kubernetes/nginx — 1Gi"]
-        NFS4["/srv/nfs/etcd-backups — 7 days"]
+        NFS1["<b>/srv/nfs/kubernetes/prometheus</b><br/>5Gi • PVC: prometheus-pvc"]
+        NFS2["<b>/srv/nfs/kubernetes/grafana</b><br/>2Gi • PVC: grafana-pvc"]
+        NFS3["<b>/srv/nfs/kubernetes/nginx</b><br/>1Gi • PVC: nginx-pvc"]
+        NFS4["<b>/srv/nfs/etcd-backups</b><br/>Hourly snapshots • 7-day retention"]
     end
 
-    CMD -->|"SSH — Play 1: OS + Security"| MASTER
-    CMD -->|"SSH — Play 1: OS + Security"| WORKER
-    CMD -->|"Play 2: kubeadm init"| MASTER
-    CMD -->|"Play 3: kubeadm join"| WORKER
-    CMD -->|"Play 4: kubectl apply"| SERVICES
+    CMD -->|"SSH — Play 1<br/>OS prep + Security hardening"| MASTER
+    CMD -->|"SSH — Play 1<br/>OS prep + Security hardening"| WORKER
+    CMD -->|"Play 2<br/>kubeadm init + Flannel CNI"| MASTER
+    CMD -->|"Play 3<br/>kubeadm join + Wait Ready"| WORKER
+    CMD -->|"Play 4<br/>kubectl apply manifests"| SERVICES
 
-    PROM -->|"scrape /metrics"| NE
-    PROM -->|"scrape /metrics"| KSM
-    PROM -->|"scrape /metrics"| FALCO
-    GRAF -->|"PromQL queries"| PROM
+    PROM -->|"scrape /metrics<br/>every 30s"| NE
+    PROM -->|"scrape /metrics<br/>every 30s"| KSM
+    PROM -->|"scrape /metrics<br/>every 30s"| FALCO
+    GRAF -->|"PromQL<br/>queries"| PROM
 
-    PROM -.->|"PVC"| NFS1
-    GRAF -.->|"PVC"| NFS2
-    NGINX -.->|"PVC"| NFS3
-    ETCD -.->|"cron backup"| NFS4
+    PROM -..->|"PVC mount<br/>nfs-storage class"| NFS1
+    GRAF -..->|"PVC mount<br/>nfs-storage class"| NFS2
+    NGINX -..->|"PVC mount<br/>nginx-pvc"| NFS3
+    ETCD -..->|"cron backup<br/>hourly snapshot"| NFS4
 
     classDef master fill:#4a90d9,stroke:#2d5986,color:#fff,stroke-width:2px
     classDef worker fill:#5cb85c,stroke:#3d8b3d,color:#fff,stroke-width:2px
@@ -122,11 +130,13 @@ graph TB
     classDef security fill:#e74c3c,stroke:#a93226,color:#fff,stroke-width:2px
     classDef storage fill:#f0ad4e,stroke:#c87f0a,color:#000,stroke-width:2px
     classDef app fill:#17a2b8,stroke:#117a8b,color:#fff,stroke-width:2px
+    classDef metrics fill:#2ecc71,stroke:#1a9850,color:#fff,stroke-width:2px
 
     class API,ETCD,SCHED,CM master
-    class KP,KL worker
-    class PROM,GRAF,NE,KSM monitoring
-    class FALCO,NP,PSS security
+    class KP,KL,CRT worker
+    class PROM,GRAF monitoring
+    class NE,KSM metrics
+    class FALCO,NP,PSS,RBAC security
     class NFS1,NFS2,NFS3,NFS4 storage
     class NGINX app
 ```
