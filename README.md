@@ -41,116 +41,49 @@
 ## 🏗️ High-Level Architecture
 
 ```mermaid
-graph TB
-    subgraph CONTROL["🎛️ Ansible Control Machine"]
-        direction LR
-        CMD["<b>$ ansible-playbook site.yml</b><br/>One command deploys entire cluster"]
-    end
-
-    subgraph CLUSTER["☸️ Kubernetes Cluster v1.29 — Ubuntu 22.04 LTS"]
+graph LR
+    subgraph PROV["🚀 Provisioning"]
         direction TB
-
-        subgraph MASTER["🖥️ Master Node — 192.168.144.130<br/>4 GB RAM • 2 vCPU • 30 GB Disk"]
-            direction LR
-            API["🔌 <b>API Server</b><br/>Port: 6443<br/>Cluster gateway"]
-            ETCD["💾 <b>etcd</b><br/>Port: 2379<br/>Cluster state DB"]
-            SCHED["📋 <b>Scheduler</b><br/>Pod placement<br/>decisions"]
-            CM["🔄 <b>Controller</b><br/><b>Manager</b><br/>Self-healing loop"]
-        end
-
-        subgraph WORKER["🖥️ Worker Node — 192.168.144.134<br/>4 GB RAM • 2 vCPU • 30 GB Disk"]
-            direction LR
-            KL["⚙️ <b>kubelet</b><br/>Pod lifecycle<br/>manager"]
-            KP["🔀 <b>kube-proxy</b><br/>Service routing<br/>iptables rules"]
-            CRT["📦 <b>containerd</b><br/>Container runtime<br/>CRI-compliant"]
-        end
-
-        subgraph NETWORK["🌐 Flannel CNI — 10.244.0.0/16 VXLAN Overlay"]
-            direction LR
-            NET_NOTE["Pod-to-Pod networking across nodes • ~50MB RAM per node"]
-        end
+        ANS["<b>Ansible Control</b>\nansible-playbook site.yml"]
     end
 
-    subgraph SERVICES["📦 Deployed Services"]
+    subgraph CLUSTER["☸️ Kubernetes Cluster (Ubuntu 22.04)"]
         direction TB
-
-        subgraph MON["📊 Monitoring Stack — namespace: monitoring"]
-            direction LR
-            PROM["<b>Prometheus</b><br/>NodePort :30090<br/>Scrape interval: 30s<br/>Retention: 3d / 1GB"]
-            GRAF["<b>Grafana</b><br/>NodePort :30300<br/>4 pre-built dashboards<br/>Login: admin/K8sGrafana@2024!"]
-        end
-
-        subgraph METRICS["📈 Metrics Exporters — namespace: monitoring"]
-            direction LR
-            NE["<b>Node Exporter</b><br/>Port :9100<br/>DaemonSet<br/>CPU, RAM, Disk, Net"]
-            KSM["<b>Kube-State-Metrics</b><br/>Port :8080<br/>Deployment<br/>Pod, Deploy, Node state"]
-        end
-
-        subgraph APP["🚀 Application — namespace: default"]
-            direction LR
-            NGINX["<b>Nginx x2 replicas</b><br/>NodePort :30080<br/>PSS-compliant<br/>Liveness + Readiness probes<br/>NFS persistent web content"]
-        end
-
-        subgraph AUTO["⚖️ Autoscaling — namespace: default & kube-system"]
-            direction LR
-            HPA["<b>Horizontal Pod Autoscaler</b><br/>Monitors Nginx CPU/Memory<br/>Scales 2 ↔ 5 replicas"]
-            MS["<b>metrics-server</b><br/>Provides resource metrics<br/>to HPA"]
-        end
-
-        subgraph SEC["🛡️ Security Layer"]
-            direction LR
-            FALCO["<b>Falco</b><br/>DaemonSet<br/>namespace: falco<br/>Runtime threat detection"]
-            NP["<b>Network Policies</b><br/>default-deny ingress+egress<br/>allow-nginx :8080<br/>allow-dns, allow-NFS"]
-            PSS["<b>Pod Security</b><br/><b>Standards</b><br/>enforce: baseline<br/>warn: restricted"]
-            RBAC["<b>RBAC</b><br/>ServiceAccount-based<br/>developer + deployer<br/>Least-privilege"]
-        end
+        CP["<b>Control Plane (Master)</b>\nAPI, etcd, Scheduler\n192.168.144.130"]
+        DP["<b>Data Plane (Worker)</b>\nkubelet, containerd\n192.168.144.134"]
+        NET["<b>CNI Plugin</b>\nFlannel VXLAN"]
+        
+        CP <-->|"Manages"| DP
+        DP --- NET
     end
 
-    subgraph STORAGE["💾 NFS Server — 192.168.144.132<br/>External Persistent Storage"]
+    subgraph STACK["🏗️ Core Stack"]
         direction TB
-        NFS1["<b>/srv/nfs/kubernetes/prometheus</b><br/>5Gi • PVC: prometheus-pvc"]
-        NFS2["<b>/srv/nfs/kubernetes/grafana</b><br/>2Gi • PVC: grafana-pvc"]
-        NFS3["<b>/srv/nfs/kubernetes/nginx</b><br/>1Gi • PVC: nginx-pvc"]
-        NFS4["<b>/srv/nfs/etcd-backups</b><br/>Hourly snapshots • 7-day retention"]
+        APP["<b>Workload</b>\nNginx App + Autoscaling (HPA)"]
+        OBS["<b>Observability</b>\nPrometheus, Grafana, KSM"]
+        SEC["<b>Security</b>\nFalco, RBAC, Network Policies"]
     end
 
-    CMD -->|"SSH — Play 1<br/>OS prep + Security hardening"| MASTER
-    CMD -->|"SSH — Play 1<br/>OS prep + Security hardening"| WORKER
-    CMD -->|"Play 2<br/>kubeadm init + Flannel CNI"| MASTER
-    CMD -->|"Play 3<br/>kubeadm join + Wait Ready"| WORKER
-    CMD -->|"Play 4<br/>kubectl apply manifests"| SERVICES
+    subgraph PERSIST["💾 External Persistence"]
+        direction TB
+        NFS["<b>NFS Server (192.168.144.132)</b>\nShared Storage for Pods"]
+        BKP["<b>Disaster Recovery</b>\nHourly etcd Snapshots"]
+    end
 
-    PROM -->|"scrape /metrics<br/>every 30s"| NE
-    PROM -->|"scrape /metrics<br/>every 30s"| KSM
-    PROM -->|"scrape /metrics<br/>every 30s"| FALCO
-    GRAF -->|"PromQL<br/>queries"| PROM
+    PROV -->|"Deploys & Hardens"| CLUSTER
+    CLUSTER -->|"Hosts"| STACK
+    STACK -->|"Mounts PVCs to"| NFS
+    CLUSTER -.->|"Automated Backup to"| BKP
     
-    MS -->|"CPU/Mem metrics"| HPA
-    HPA -.->|"Scales"| NGINX
-    MS -->|"Pulls metrics"| KL
+    classDef prov fill:#e8f4f8,stroke:#3498db,stroke-width:2px,color:#000
+    classDef cluster fill:#e8f5e9,stroke:#2ecc71,stroke-width:2px,color:#000
+    classDef stack fill:#f5eef8,stroke:#9b59b6,stroke-width:2px,color:#000
+    classDef persist fill:#fef9e7,stroke:#f1c40f,stroke-width:2px,color:#000
 
-    PROM -..->|"PVC mount<br/>nfs-storage class"| NFS1
-    GRAF -..->|"PVC mount<br/>nfs-storage class"| NFS2
-    NGINX -..->|"PVC mount<br/>nginx-pvc"| NFS3
-    ETCD -..->|"cron backup<br/>hourly snapshot"| NFS4
-
-    classDef master fill:#4a90d9,stroke:#2d5986,color:#fff,stroke-width:2px
-    classDef worker fill:#5cb85c,stroke:#3d8b3d,color:#fff,stroke-width:2px
-    classDef monitoring fill:#9b59b6,stroke:#6c3483,color:#fff,stroke-width:2px
-    classDef security fill:#e74c3c,stroke:#a93226,color:#fff,stroke-width:2px
-    classDef storage fill:#f0ad4e,stroke:#c87f0a,color:#000,stroke-width:2px
-    classDef app fill:#17a2b8,stroke:#117a8b,color:#fff,stroke-width:2px
-    classDef metrics fill:#2ecc71,stroke:#1a9850,color:#fff,stroke-width:2px
-    classDef auto fill:#d35400,stroke:#a04000,color:#fff,stroke-width:2px
-
-    class API,ETCD,SCHED,CM master
-    class KP,KL,CRT worker
-    class PROM,GRAF monitoring
-    class NE,KSM metrics
-    class FALCO,NP,PSS,RBAC security
-    class NFS1,NFS2,NFS3,NFS4 storage
-    class NGINX app
-    class HPA,MS auto
+    class ANS prov
+    class CP,DP,NET cluster
+    class APP,OBS,SEC stack
+    class NFS,BKP persist
 ```
 
 <br/>
