@@ -91,6 +91,12 @@ graph TB
             NGINX["<b>Nginx x2 replicas</b><br/>NodePort :30080<br/>PSS-compliant<br/>Liveness + Readiness probes<br/>NFS persistent web content"]
         end
 
+        subgraph AUTO["⚖️ Autoscaling — namespace: default & kube-system"]
+            direction LR
+            HPA["<b>Horizontal Pod Autoscaler</b><br/>Monitors Nginx CPU/Memory<br/>Scales 2 ↔ 5 replicas"]
+            MS["<b>metrics-server</b><br/>Provides resource metrics<br/>to HPA"]
+        end
+
         subgraph SEC["🛡️ Security Layer"]
             direction LR
             FALCO["<b>Falco</b><br/>DaemonSet<br/>namespace: falco<br/>Runtime threat detection"]
@@ -118,6 +124,10 @@ graph TB
     PROM -->|"scrape /metrics<br/>every 30s"| KSM
     PROM -->|"scrape /metrics<br/>every 30s"| FALCO
     GRAF -->|"PromQL<br/>queries"| PROM
+    
+    MS -->|"CPU/Mem metrics"| HPA
+    HPA -.->|"Scales"| NGINX
+    MS -->|"Pulls metrics"| KL
 
     PROM -..->|"PVC mount<br/>nfs-storage class"| NFS1
     GRAF -..->|"PVC mount<br/>nfs-storage class"| NFS2
@@ -131,6 +141,7 @@ graph TB
     classDef storage fill:#f0ad4e,stroke:#c87f0a,color:#000,stroke-width:2px
     classDef app fill:#17a2b8,stroke:#117a8b,color:#fff,stroke-width:2px
     classDef metrics fill:#2ecc71,stroke:#1a9850,color:#fff,stroke-width:2px
+    classDef auto fill:#d35400,stroke:#a04000,color:#fff,stroke-width:2px
 
     class API,ETCD,SCHED,CM master
     class KP,KL,CRT worker
@@ -139,6 +150,7 @@ graph TB
     class FALCO,NP,PSS,RBAC security
     class NFS1,NFS2,NFS3,NFS4 storage
     class NGINX app
+    class HPA,MS auto
 ```
 
 <br/>
@@ -559,10 +571,9 @@ Kubernetes_Cdac_Project/
 │
 ├── 📂 docs/                                 # Documentation
 │   ├── 📄 Kubernetes_Cluster_Project_Document.md  # Complete project documentation
-│   ├── 📄 Project_Explanation.md            # Project explanation guide
-│   ├── 📄 Interview_QA_Guide.md             # Interview Q&A reference
-│   ├── 📄 Updated_Interview_QA.md           # Extended interview guide
-│   ├── 📄 interview_extra.md                # Additional interview prep
+│   ├── 📄 Project_Explanation.md            # Complete Technical project explanation guide
+│   ├── 📄 Interview_Complete_Guide.md       # Comprehensive interview Q&A and scenario guide
+│   ├── 📄 Interview_Short_Pitch.md          # 3-minute speaking script for interviews
 │   └── 📄 setup_guide.md                    # Step-by-step setup instructions
 │
 └── 📄 README.md                             # ← You are here
@@ -631,9 +642,9 @@ All settings live in `ansible/group_vars/all.yml`:
 | Document | Description |
 |----------|-------------|
 | [📘 Complete Project Documentation](docs/Kubernetes_Cluster_Project_Document.md) | Full technical deep-dive with "what & why" for every component |
-| [📖 Project Explanation](docs/Project_Explanation.md) | Concise project overview |
-| [🎤 Interview Q&A Guide](docs/Interview_QA_Guide.md) | Interview preparation reference |
-| [📝 Updated Interview Q&A](docs/Updated_Interview_QA.md) | Extended interview guide with scenarios |
+| [📖 Project Explanation](docs/Project_Explanation.md) | Complete Technical Guide detailing component internals and commands |
+| [🎤 Interview Complete Guide](docs/Interview_Complete_Guide.md) | The ultimate interview preparation reference (combined Q&A, scenarios, story mode) |
+| [⏱️ 3-Minute Interview Pitch](docs/Interview_Short_Pitch.md) | A short, heavily focused speaking script for answering "Explain your project" |
 | [🔧 Setup Guide](docs/setup_guide.md) | Step-by-step setup instructions |
 
 ---

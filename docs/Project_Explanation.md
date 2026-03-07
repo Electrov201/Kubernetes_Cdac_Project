@@ -1,137 +1,65 @@
-# Kubernetes Cluster Setup with Ansible Automation - Complete Project Explanation
+# 🔧 Complete Project Explanation — Technical Guide
+
+> **Purpose**: This document explains every component of the project — **why** it's used, **how** it works, **what commands** are involved, and **real examples** from the actual project files.
+
+---
 
 ## 📋 Table of Contents
-1. [Project Overview](#project-overview)
-2. [Architecture Diagram](#architecture-diagram)
-3. [Project Directory Structure](#project-directory-structure)
-4. [Complete Deployment Flow](#complete-deployment-flow)
-5. [Phase 1: Prerequisites Setup](#phase-1-prerequisites-setup-common-role)
-6. [Phase 2: Security Hardening](#phase-2-security-hardening-security-role)
-7. [Phase 3: Kubernetes Master Initialization](#phase-3-kubernetes-master-initialization-k8s_master-role)
-8. [Phase 4: Worker Node Join](#phase-4-worker-node-join-k8s_worker-role)
-9. [Phase 5: Cluster Services Deployment](#phase-5-cluster-services-deployment)
-10. [Monitoring Stack](#monitoring-stack)
-11. [Storage Configuration](#storage-configuration)
-12. [Security Implementation](#security-implementation)
-13. [Runtime Security with Falco](#runtime-security-with-falco)
-14. [Backup and Diagnostics](#backup-and-diagnostics)
-15. [Service Access](#service-access)
-16. [Data Flow Diagram](#data-flow-diagram)
+
+1. [Project Overview](#1-project-overview)
+2. [Ansible Automation](#2-ansible-automation)
+3. [Container Runtime — containerd](#3-container-runtime--containerd)
+4. [Kubernetes Cluster (kubeadm)](#4-kubernetes-cluster-kubeadm)
+5. [CNI Networking — Flannel](#5-cni-networking--flannel)
+6. [NFS Storage (PV, PVC, StorageClass)](#6-nfs-storage-pv-pvc-storageclass)
+7. [Monitoring Stack (Prometheus + Grafana)](#7-monitoring-stack-prometheus--grafana)
+8. [Metrics Exporters (Node Exporter + KSM)](#8-metrics-exporters-node-exporter--ksm)
+9. [Nginx Application](#9-nginx-application)
+10. [Autoscaling (HPA + Metrics Server)](#10-autoscaling-hpa--metrics-server)
+11. [Security — RBAC](#11-security--rbac)
+12. [Security — Pod Security Standards](#12-security--pod-security-standards)
+13. [Security — Network Policies](#13-security--network-policies)
+14. [Security — Grafana Secrets](#14-security--grafana-secrets)
+15. [Security — Falco Runtime](#15-security--falco-runtime)
+16. [Backup & Diagnostics](#16-backup--diagnostics)
+17. [Complete Command Reference](#17-complete-command-reference)
 
 ---
 
-## Project Overview
+## 1. Project Overview
 
-This project automates the deployment of a **production-ready Kubernetes cluster** with complete monitoring, security, and observability stack. It is specifically optimized for a **2-node, 8GB RAM lab environment**.
+### What is this project?
+This project **automates the deployment of a production-ready Kubernetes cluster** using Ansible. Instead of running 50+ commands manually on each server, you run **one command** and get a complete cluster with monitoring, security, storage, and autoscaling — all configured.
 
-### Key Features
-| Feature | Technology | Description |
-|---------|------------|-------------|
-| **Automation** | Ansible | Complete cluster setup with one command |
-| **Container Runtime** | containerd | Lightweight, CRI-compliant runtime |
-| **Networking** | Flannel CNI | Simple overlay network for pods |
-| **Monitoring** | Prometheus + Grafana | Metrics collection and visualization |
-| **Metrics Export** | Node Exporter + Kube-State-Metrics | System and K8s object metrics |
-| **Storage** | NFS PersistentVolumes | Shared storage for workloads |
-| **Security** | UFW + Network Policies + RBAC + PSS | Multi-layer security |
-| **Runtime Security** | Falco | Real-time threat detection |
-| **Backup** | etcd automated backup | Hourly cluster state backup |
-| **Sample Workload** | Nginx | Demonstrates self-healing with probes |
-
----
-
-## Architecture Diagram
-
-```mermaid
-graph TB
-    subgraph "Control Machine"
-        A[Ansible Control Node] --> |SSH| B[K8s Master]
-        A --> |SSH| C[K8s Worker]
-    end
-    
-    subgraph "Kubernetes Cluster"
-        B[K8s Master<br/>192.168.144.130]
-        C[K8s Worker<br/>192.168.144.134]
-        
-        B --> |API Server| D[Control Plane]
-        D --> E[etcd]
-        D --> F[kube-scheduler]
-        D --> G[kube-controller-manager]
-        
-        B <--> |Flannel Overlay| C
-    end
-    
-    subgraph "External Services"
-        H[NFS Server<br/>192.168.144.132]
-    end
-    
-    B --> |NFS Mount| H
-    C --> |NFS Mount| H
-```
-
----
-
-## Project Directory Structure
+### What does the final cluster look like?
 
 ```
-📁 Cdac Project/
-├── 📄 README.md                          # Quick start guide
-├── 📁 ansible/                           # Ansible automation
-│   ├── 📁 inventory/
-│   │   └── 📄 hosts.ini                  # Cluster node IPs
-│   ├── 📁 group_vars/
-│   │   └── 📄 all.yml                    # Global configuration variables
-│   ├── 📄 site.yml                       # Main playbook (orchestrates all roles)
-│   └── 📁 roles/
-│       ├── 📁 common/                    # Prerequisites & containerd
-│       │   ├── 📁 tasks/main.yml
-│       │   └── 📁 handlers/main.yml
-│       ├── 📁 k8s_master/                # Control plane setup
-│       │   ├── 📁 tasks/main.yml
-│       │   └── 📁 handlers/main.yml
-│       ├── 📁 k8s_worker/                # Worker node join
-│       │   └── 📁 tasks/main.yml
-│       └── 📁 security/                  # Firewall & CIS hardening
-│           ├── 📁 tasks/main.yml
-│           └── 📁 handlers/main.yml
-├── 📁 kubernetes/                        # Kubernetes manifests
-│   ├── 📁 monitoring/                    # Prometheus + Grafana stack
-│   │   ├── 📄 namespace.yaml
-│   │   ├── 📄 prometheus.yaml
-│   │   ├── 📄 prometheus-alerts.yaml
-│   │   ├── 📄 grafana.yaml
-│   │   ├── 📄 grafana-dashboards.yaml
-│   │   ├── 📄 grafana-secret.yaml
-│   ├── 📄 node-exporter.yaml
-│   └── 📄 kube-state-metrics.yaml
-│   ├── 📁 storage/                       # NFS PersistentVolumes
-│   │   ├── 📄 storage-class.yaml
-│   │   ├── 📄 nfs-pv.yaml
-│   │   └── 📄 nfs-pvc.yaml
-│   ├── 📁 nginx/                         # Sample workload
-│   │   └── 📄 deployment.yaml
-│   ├── 📁 security/                      # Network Policies & RBAC
-│   │   ├── 📄 network-policy.yaml
-│   │   └── 📄 pss-rbac.yaml
-│   ├── 📁 autoscaling/                  # HPA + metrics-server
-│   └── 📄 nginx-hpa.yaml
-│   └── 📁 falco/                         # Runtime security
-│       └── 📄 falco.yaml
-├── 📁 scripts/                           # Utility scripts
-│   ├── 📄 etcd-backup.sh                 # Automated backup
-│   └── 📄 diagnose-services.sh           # Troubleshooting
-└── 📁 docs/                              # Documentation
-    ├── 📄 Kubernetes_Cluster_Project_Document.md
-    ├── 📄 Interview_QA_Guide.md
-    └── 📄 setup_guide.md
+┌─────────────────────────────────────────────────────────────────┐
+│                     YOUR KUBERNETES CLUSTER                      │
+│                                                                  │
+│  MASTER NODE (192.168.144.130)    WORKER NODE (192.168.144.134) │
+│  ┌──────────────────────┐         ┌──────────────────────┐      │
+│  │ API Server           │         │ kubelet              │      │
+│  │ etcd (cluster DB)    │◄═══════►│ kube-proxy           │      │
+│  │ Scheduler            │ Flannel │ containerd           │      │
+│  │ Controller Manager   │  CNI    │                      │      │
+│  └──────────────────────┘         └──────────────────────┘      │
+│                                                                  │
+│  RUNNING PODS (on both nodes):                                   │
+│  ┌────────────┐ ┌────────────┐ ┌──────────┐ ┌──────────┐       │
+│  │ Prometheus │ │ Grafana    │ │ Nginx x2 │ │ Falco    │       │
+│  │ :30090     │ │ :30300     │ │ :30080   │ │ security │       │
+│  └─────┬──────┘ └─────┬──────┘ └────┬─────┘ └──────────┘       │
+│        │              │             │                            │
+│        └──────────────┴─────────────┘                            │
+│                       │ NFS (PVC)                                │
+│                       ▼                                          │
+│          NFS SERVER (192.168.144.132)                             │
+│          /srv/nfs/kubernetes/                                     │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## Complete Deployment Flow
-
-The entire deployment is orchestrated by **one single command**:
-
+### How to deploy the entire cluster:
 ```bash
 cd ansible
 ansible-playbook -i inventory/hosts.ini site.yml
@@ -165,857 +93,1108 @@ flowchart LR
     C1 --> D1
 ```
 
----
+That's it. One command. ~15 minutes. The rest of this document explains what happens behind the scenes.
 
-## Phase 1: Prerequisites Setup (common role)
+### Project Directory Structure
 
-**File:** `ansible/roles/common/tasks/main.yml`
-
-This role runs on **ALL nodes** (master + workers) and prepares them for Kubernetes.
-
-### Step-by-Step Execution
-
-| Step | Task | What It Does |
-|------|------|--------------|
-| 1 | Disable Swap | Kubernetes requires swap to be off |
-| 2 | Update apt cache | Refresh package lists |
-| 3 | Install packages | `apt-transport-https, curl, nfs-common, etc.` |
-| 4 | Load kernel modules | `overlay, br_netfilter` for container networking |
-| 5 | Configure sysctl | Enable IP forwarding and bridge filtering |
-| 6 | Install containerd | Container runtime |
-| 7 | Configure containerd | Enable systemd cgroup driver |
-| 8 | Add K8s apt repo | Kubernetes v1.29 packages |
-| 9 | Install K8s components | `kubelet, kubeadm, kubectl` |
-| 10 | Hold packages | Prevent auto-upgrades |
-| 11 | Configure kubelet | Memory/CPU reservations for 8GB setup |
-| 12 | Update /etc/hosts | Add hostnames for all cluster nodes |
-
-### Key Configuration Applied
-
-```yaml
-# Sysctl parameters for Kubernetes networking
-net.bridge.bridge-nf-call-iptables = 1
-net.bridge.bridge-nf-call-ip6tables = 1
-net.ipv4.ip_forward = 1
-
-# Resource reservations for 8GB RAM
-kubelet_system_reserved_memory: "500Mi"
-kubelet_system_reserved_cpu: "200m"
+```text
+📁 Cdac Project/
+├── 📄 README.md                          # Quick start guide
+├── 📁 ansible/                           # Ansible automation
+│   ├── 📁 inventory/
+│   │   └── 📄 hosts.ini                  # Cluster node IPs
+│   ├── 📁 group_vars/
+│   │   └── 📄 all.yml                    # Global configuration variables
+│   ├── 📄 site.yml                       # Main playbook (orchestrates all roles)
+│   └── 📁 roles/
+│       ├── 📁 common/                    # Prerequisites & containerd
+│       ├── 📁 k8s_master/                # Control plane setup
+│       ├── 📁 k8s_worker/                # Worker node join
+│       └── 📁 security/                  # Firewall & CIS hardening
+├── 📁 kubernetes/                        # Kubernetes manifests
+│   ├── 📁 monitoring/                    # Prometheus + Grafana stack
+│   ├── 📄 node-exporter.yaml
+│   ├── 📄 kube-state-metrics.yaml
+│   ├── 📁 storage/                       # NFS PersistentVolumes
+│   ├── 📁 nginx/                         # Sample workload
+│   ├── 📁 security/                      # Network Policies & RBAC
+│   ├── 📁 autoscaling/                   # HPA + metrics-server
+│   └── 📁 falco/                         # Runtime security
+├── 📁 scripts/                           # Utility scripts
+│   ├── 📄 etcd-backup.sh                 # Automated backup
+│   └── 📄 diagnose-services.sh           # Troubleshooting
+└── 📁 docs/                              # Documentation
+    ├── 📄 Project_Explanation.md         # Full project technical guide
+    ├── 📄 Interview_Complete_Guide.md    # Comprehensive interview guide
+    └── 📄 setup_guide.md                 # Initial setup instructions
 ```
 
 ---
 
-## Phase 2: Security Hardening (security role)
+## 2. Ansible Automation
 
-**File:** `ansible/roles/security/tasks/main.yml`
+### WHY Ansible?
+| Problem Without Ansible | Solution With Ansible |
+|---|---|
+| Manually SSH into each server | Ansible connects via SSH automatically |
+| Run 50+ commands per node | One playbook runs everything |
+| Human errors (typos, missed steps) | Idempotent — same result every run |
+| No record of what was done | YAML files = documentation |
+| Knowledge lost when engineer leaves | Playbooks = knowledge in code |
 
-This role implements **CIS Kubernetes Benchmark** controls and firewall rules.
+### HOW it works:
+Ansible reads a **playbook** (`site.yml`) that tells it:
+1. **Which servers** to connect to → `inventory/hosts.ini`
+2. **What variables** to use → `group_vars/all.yml`
+3. **What tasks** to run → roles (`common`, `security`, `k8s_master`, `k8s_worker`)
 
-### Firewall Configuration (UFW)
-
-| Port | Protocol | Purpose | Scope |
-|------|----------|---------|-------|
-| 22 | TCP | SSH access | All nodes |
-| 6443 | TCP | Kubernetes API Server | Master only |
-| 2379-2380 | TCP | etcd client/peer comms | Master only |
-| 10250 | TCP | Kubelet API | All nodes |
-| 10251 | TCP | kube-scheduler | Master only |
-| 10252 | TCP | kube-controller-manager | Master only |
-| 30000-32767 | TCP | NodePort Services | All nodes |
-| 8472 | UDP | Flannel VXLAN | All nodes |
-| 9100 | TCP | Node Exporter metrics | All nodes |
-
-### SSH Hardening
-
-```yaml
-PermitRootLogin no              # Disable root SSH
-PasswordAuthentication no        # Key-based auth only
+```
+site.yml (playbook)
+    │
+    ├── Play 1: ALL NODES → common role + security role
+    │   ├── Install containerd
+    │   ├── Install kubelet, kubeadm, kubectl
+    │   ├── Configure firewall (UFW)
+    │   └── SSH hardening
+    │
+    ├── Play 2: MASTER ONLY → k8s_master role
+    │   ├── kubeadm init (create cluster)
+    │   ├── Install Flannel CNI
+    │   ├── Remove master taint (allow pods on master)
+    │   └── Generate join token for workers
+    │
+    ├── Play 3: WORKERS ONLY → k8s_worker role
+    │   └── kubeadm join (join the cluster)
+    │
+    └── Play 4: DEPLOY SERVICES (on master)
+        ├── Apply storage manifests (PV, PVC)
+        ├── Apply grafana-secret
+        ├── Apply monitoring (Prometheus, Grafana)
+        ├── Apply nginx
+        ├── Deploy metrics-server
+        ├── Apply HPA (autoscaling)
+        ├── Apply security (RBAC, NetworkPolicy)
+        └── Apply Falco (if enabled)
 ```
 
-### CIS Benchmark Controls Implemented
+### Key Files:
 
-| CIS ID | Control | Implementation |
-|--------|---------|----------------|
-| 1.1.1-1.1.21 | Control plane file permissions | chmod 0600 on manifest files |
-| 1.1.12 | Secure etcd data | chmod 0700 on /var/lib/etcd |
-| 1.1.19-21 | PKI certificate permissions | 0644 for certs, 0600 for keys |
-| 4.1.1-5 | Kubelet configuration | Secure file permissions |
-| 4.2.1 | Anonymous authentication | Disabled |
-| 4.2.4 | Read-only port | Disabled (port 0) |
-| 5.2.x | Pod Security Standards | Enforced via namespace labels |
-| 5.3.2 | Network Policies | Applied in K8s manifests |
+#### `ansible/inventory/hosts.ini` — Tells Ansible WHERE to connect
+```ini
+[masters]
+k8s-master ansible_host=192.168.144.130   # Master node IP
 
-### Kernel Hardening Parameters
+[workers]
+k8s-worker1 ansible_host=192.168.144.134  # Worker node IP
 
+[all:vars]
+ansible_user=ubuntu                        # SSH username
+ansible_ssh_private_key_file=~/.ssh/id_rsa # SSH key (no passwords)
+```
+
+#### `ansible/group_vars/all.yml` — All configurable settings
 ```yaml
-kernel.randomize_va_space = 2           # ASLR enabled
-net.ipv4.conf.all.rp_filter = 1         # Reverse path filtering
-net.ipv4.icmp_echo_ignore_broadcasts = 1
-net.ipv4.conf.all.accept_source_route = 0
-net.ipv4.conf.all.send_redirects = 0
+kubernetes_version: "1.29"                 # Which K8s version to install
+api_server_advertise_address: "192.168.144.130"  # Master IP
+nfs_server: "192.168.144.132"              # NFS storage server IP
+cni_plugin: "flannel"                      # Network plugin (flannel = lightweight)
+enable_falco: true                         # Enable runtime security
+pss_level: "baseline"                      # Pod Security level
+prometheus_memory_limit: "512Mi"           # Prometheus RAM cap
+grafana_admin_password: "K8sGrafana@2024!" # Grafana login password
+```
+
+### Commands:
+
+| Command | What It Does |
+|---|---|
+| `ansible-playbook -i inventory/hosts.ini site.yml` | **Deploy everything** (the main command) |
+| `ansible -i inventory/hosts.ini all -m ping` | Test if Ansible can reach all servers |
+| `ansible-playbook site.yml --check` | Dry run — shows what WOULD change |
+| `ansible-playbook site.yml -vvv` | Verbose output — see every step |
+| `ansible-playbook site.yml --tags common` | Run only the `common` role |
+
+### Example Output:
+```
+PLAY [Setup prerequisites on all nodes] ****
+TASK [common : Disable swap] ************** 
+changed: [k8s-master]
+changed: [k8s-worker1]
+
+TASK [common : Install containerd] ********
+ok: [k8s-master]        ← Already installed (idempotent!)
+changed: [k8s-worker1]  ← Installed fresh
+
+PLAY RECAP ********************************
+k8s-master   : ok=42  changed=3   failed=0
+k8s-worker1  : ok=42  changed=15  failed=0
 ```
 
 ---
 
-## Phase 3: Kubernetes Master Initialization (k8s_master role)
+## 3. Container Runtime — containerd
 
-**File:** `ansible/roles/k8s_master/tasks/main.yml`
+### WHY containerd?
+| Question | Answer |
+|---|---|
+| What is a container runtime? | Software that actually **runs containers** on a machine |
+| Why not Docker? | Kubernetes **removed Docker support** in v1.24. containerd is Docker's engine without the extras |
+| Why containerd specifically? | It's the **official CRI** (Container Runtime Interface), lighter (~50MB), used by AWS/GCP/Azure |
 
-This role runs **only on the master node** and sets up the control plane.
-
-### Step-by-Step Execution
-
-```mermaid
-flowchart TD
-    A[Check if cluster exists] --> B{admin.conf exists?}
-    B -->|No| C[Initialize with kubeadm init]
-    B -->|Yes| D[Check API health]
-    D -->|Unhealthy| E[Reset and reinitialize]
-    D -->|Healthy| F[Skip initialization]
-    C --> G[Setup kubectl for root/ubuntu]
-    E --> G
-    F --> G
-    G --> H[Wait for API server]
-    H --> I[Install Flannel CNI]
-    I --> J[Wait for Flannel pods]
-    J --> K[Remove master taint]
-    K --> L[Generate join command]
-    L --> M[Apply Pod Security Standards]
-    M --> N[Setup etcd backup cron]
+### HOW it works:
+```
+kubectl create pod → API Server → Scheduler → kubelet → containerd → Linux kernel
+                                                          │
+                                                          ├── Creates namespaces (isolation)
+                                                          ├── Creates cgroups (resource limits)
+                                                          └── Runs the container process
 ```
 
-### kubeadm init Command
+### Key Configuration (from `common` role):
+```yaml
+# Generate default config
+containerd config default > /etc/containerd/config.toml
 
+# Critical setting: Use systemd cgroup driver
+# WHY: kubelet uses systemd, containerd must match
+SystemdCgroup = true
+```
+
+### Commands:
+```bash
+# Check if containerd is running
+systemctl status containerd
+
+# List running containers (on any node)
+crictl ps
+
+# Pull an image manually
+crictl pull nginx:1.25.3-alpine
+
+# Check containerd version
+containerd --version
+```
+
+---
+
+## 4. Kubernetes Cluster (kubeadm)
+
+### WHY kubeadm?
+| Option | Pros | Cons | Why We Chose |
+|---|---|---|---|
+| **kubeadm** | Standard, works anywhere, full control | Manual setup | ✅ Portable, no vendor lock-in |
+| EKS/GKE/AKS | Managed, easy | Vendor lock-in, costs money | ❌ Not portable |
+| k3s | Lightweight | Non-standard, limited features | ❌ Missing features |
+
+### HOW the cluster initializes:
+
+#### Step 1: Master node runs `kubeadm init`
 ```bash
 kubeadm init \
-  --apiserver-advertise-address=192.168.144.130 \
-  --pod-network-cidr=10.244.0.0/16 \
-  --service-cidr=10.96.0.0/12 \
-  --cri-socket=unix:///run/containerd/containerd.sock
+  --apiserver-advertise-address=192.168.144.130 \    # Where API listens
+  --pod-network-cidr=10.244.0.0/16 \                 # Pod IP range (must match Flannel)
+  --service-cidr=10.96.0.0/12 \                      # Service IP range
+  --cri-socket=unix:///run/containerd/containerd.sock # Use containerd
 ```
 
-### Pod Security Standards Applied
+**What this creates on the master:**
+| Component | Port | Purpose |
+|---|---|---|
+| API Server | 6443 | Entry point for all cluster operations |
+| etcd | 2379-2380 | Database storing ALL cluster state |
+| Scheduler | 10251 | Decides which node runs each pod |
+| Controller Manager | 10252 | Ensures actual state = desired state |
 
+#### Step 2: Setup kubectl (so you can talk to the cluster)
 ```bash
-kubectl label namespace default pod-security.kubernetes.io/enforce=baseline --overwrite
-kubectl label namespace default pod-security.kubernetes.io/warn=baseline --overwrite
-kubectl label namespace default pod-security.kubernetes.io/audit=baseline --overwrite
+mkdir -p $HOME/.kube
+cp /etc/kubernetes/admin.conf $HOME/.kube/config
 ```
 
-### Master Taint Removal (for 8GB setup)
-
-```bash
-# Allows pods to run on master node
-kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
-```
-
----
-
-## Phase 4: Worker Node Join (k8s_worker role)
-
-**File:** `ansible/roles/k8s_worker/tasks/main.yml`
-
-This role runs **only on worker nodes** and joins them to the cluster.
-
-### Step-by-Step Execution
-
-```mermaid
-flowchart TD
-    A[Ensure containerd running] --> B{kubelet.conf exists?}
-    B -->|No| C[Get join command from master]
-    B -->|Yes| D[Check if in current cluster]
-    D -->|Not found| E[Reset and rejoin]
-    D -->|Found| F[Skip - already joined]
-    C --> G[Execute kubeadm join]
-    E --> G
-    G --> H[Wait for kubelet start]
-    H --> I[Wait for node Ready]
-    I --> J[Worker joined successfully]
-```
-
-### Join Command Format
-
+#### Step 3: Worker joins the cluster
 ```bash
 kubeadm join 192.168.144.130:6443 \
   --token <token> \
-  --discovery-token-ca-cert-hash sha256:<hash> \
-  --cri-socket=unix:///run/containerd/containerd.sock
+  --discovery-token-ca-cert-hash sha256:<hash>
 ```
 
----
-
-## Phase 5: Cluster Services Deployment
-
-**File:** `ansible/site.yml` (Play 4 tasks)
-
-After all nodes are ready, the playbook deploys cluster services.
-
-### Deployment Order
-
-| Order | Component | Namespace | Purpose |
-|-------|-----------|-----------|---------|
-| 1 | Storage (PVs, PVCs, StorageClass) | N/A (cluster-wide) | NFS persistent storage |
-| 2 | Monitoring namespace | `monitoring` | Namespace for observability |
-| 3 | Grafana Secret | `monitoring` | Credentials for Grafana (K8s Secret) |
-| 4 | Prometheus + Node Exporter + Kube-State-Metrics | `monitoring` | Metrics collection |
-| 5 | Grafana + Dashboards | `monitoring` | Visualization |
-| 6 | Prometheus Alerts | `monitoring` | Alert rules |
-| 7 | Nginx Deployment | `default` | Sample workload |
-| 8 | Metrics Server | `kube-system` | Resource metrics for HPA |
-| 9 | HPA | `default` | Autoscaling for nginx |
-| 10 | Network Policies + RBAC | `default` | Security policies |
-| 11 | Falco (if enabled) | `falco` | Runtime security |
-
-### Manifest Application Flow
-
+#### Step 4: Remove master taint (for our 8GB setup)
 ```bash
-# On master node via Ansible
-kubectl apply -f /opt/kubernetes/storage/
-kubectl apply -f /opt/kubernetes/monitoring/grafana-secret.yaml
-kubectl apply -f /opt/kubernetes/monitoring/
-kubectl apply -f /opt/kubernetes/nginx/
-kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-kubectl apply -f /opt/kubernetes/autoscaling/
-kubectl apply -f /opt/kubernetes/security/
-kubectl apply -f /opt/kubernetes/falco/  # if enable_falco=true
+# By default, master won't run your pods (only system pods)
+# We remove this restriction because we only have 2 nodes
+kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
 ```
 
----
-
-## Monitoring Stack
-
-### Components
-
-```mermaid
-graph LR
-    subgraph "Data Collection"
-        A[Node Exporter<br/>DaemonSet] -->|:9100| P
-        B[Kube-State-Metrics<br/>Deployment] -->|:8080| P
-        C[Kubernetes API] -->|/metrics| P
-    end
-    
-    subgraph "Monitoring"
-        P[Prometheus<br/>:30090] -->|Query| G[Grafana<br/>:30300]
-    end
-    
-    subgraph "Alerting"
-        P --> |Evaluate| R[Alert Rules]
-    end
-```
-
-### Prometheus Configuration
-
-**File:** `kubernetes/monitoring/prometheus.yaml`
-
-| Setting | Value | Purpose |
-|---------|-------|---------|
-| Scrape interval | 30s | Resource optimization |
-| Retention time | 3 days | Storage limit |
-| Retention size | 1GB | Disk limit |
-| Memory limit | 512Mi | Aligned with 8GB RAM budget |
-
-### Scrape Targets
-
-| Job Name | Target | Metrics |
-|----------|--------|---------|
-| `prometheus` | localhost:9090 | Prometheus internal |
-| `kubernetes-apiservers` | Kubernetes API | API server health |
-| `kubernetes-nodes` | All nodes via proxy | Kubelet metrics |
-| `node-exporter` | :9100 on each node | System metrics (CPU, RAM, Disk) |
-| `kube-state-metrics` | :8080 | K8s object state |
-| `falco` | :8765 | Security events |
-
-### Grafana Dashboards
-
-Pre-configured dashboards in `kubernetes/monitoring/grafana-dashboards.yaml`:
-- Cluster Overview
-- Node Resource Usage
-- Pod Health
-- Falco Security Events
-
----
-
-## Node Exporter (Detailed)
-
-**File:** `kubernetes/monitoring/node-exporter.yaml`
-
-Node Exporter runs as a **DaemonSet** on every node and exports hardware/OS metrics to Prometheus.
-
-### How It Works Step-by-Step
-
-```mermaid
-flowchart LR
-    A[Node Host] --> B[Node Exporter Pod]
-    B --> |hostPath mounts| C["proc, sys, root filesystems"]
-    B --> |Port 9100| D[Prometheus]
-    D --> E[Grafana Dashboard]
-```
-
-1. **DaemonSet Deployment**: Ensures one pod per node automatically
-2. **Host Access**: Uses `hostPID`, `hostIPC`, `hostNetwork` for full system visibility
-3. **Volume Mounts**: Mounts `/proc`, `/sys`, `/` to read system metrics
-4. **Metrics Exported**: CPU, memory, disk, network statistics
-5. **Scrape Configuration**: Prometheus scrapes port 9100 on each node
-
-### Key Configuration
-
-| Setting | Value | Purpose |
-|---------|-------|---------|
-| hostNetwork | true | Access node's network metrics |
-| hostPID | true | Access process information |
-| hostPort | 9100 | Expose on node's IP |
-| tolerations | NoSchedule, NoExecute | Run on master nodes too |
-
-### Metrics Available
-
-- `node_cpu_seconds_total` - CPU usage
-- `node_memory_MemAvailable_bytes` - Available memory
-- `node_filesystem_avail_bytes` - Disk space
-- `node_network_receive_bytes_total` - Network traffic
-
----
-
-## Kube-State-Metrics (Detailed)
-
-**File:** `kubernetes/monitoring/kube-state-metrics.yaml`
-
-Kube-State-Metrics generates metrics about the state of Kubernetes objects (pods, deployments, nodes, etc.).
-
-### Why It's Needed
-
-| Without Kube-State-Metrics | With Kube-State-Metrics |
-|----------------------------|-------------------------|
-| No pod count metrics | `kube_pod_status_phase` |
-| No deployment replica info | `kube_deployment_status_replicas` |
-| No node condition data | `kube_node_status_condition` |
-| Grafana shows "No Data" | Full Kubernetes visibility |
-
-### Components Created
-
-1. **ServiceAccount**: `kube-state-metrics` in monitoring namespace
-2. **ClusterRole**: Read-only access to all K8s resources
-3. **ClusterRoleBinding**: Binds role to service account
-4. **Deployment**: Single replica with health probes
-5. **Service**: ClusterIP on ports 8080 (metrics) and 8081 (telemetry)
-
-### RBAC Permissions (What It Can Read)
-
-```yaml
-- Core: pods, nodes, services, secrets, configmaps, PVs, PVCs, namespaces
-- Apps: deployments, daemonsets, replicasets, statefulsets
-- Batch: jobs, cronjobs
-- Networking: ingresses
-- Storage: storageclasses, volumeattachments
-```
-
-### Key Metrics
-
-| Metric | Description |
-|--------|-------------|
-| `kube_pod_status_phase{phase="Running"}` | Running pods count |
-| `kube_deployment_status_available_replicas` | Available replicas |
-| `kube_node_status_condition{condition="Ready"}` | Node health |
-| `kube_pod_container_status_restarts_total` | Container restarts |
-
----
-
-## Prometheus Alerting Rules (Detailed)
-
-**File:** `kubernetes/monitoring/prometheus-alerts.yaml`
-
-Pre-configured alerting rules for proactive monitoring.
-
-### Alert Categories
-
-#### 1. Node Alerts
-
-| Alert | Condition | Severity | For Duration |
-|-------|-----------|----------|--------------|
-| **NodeDown** | `up{job="node-exporter"} == 0` | Critical | 2 min |
-| **HighCPUUsage** | CPU > 80% | Warning | 5 min |
-| **HighMemoryUsage** | Memory > 85% | Warning | 5 min |
-| **DiskSpaceLow** | Disk < 15% | Warning | 5 min |
-| **DiskSpaceCritical** | Disk < 5% | Critical | 2 min |
-
-#### 2. Kubernetes Alerts
-
-| Alert | Condition | Severity | For Duration |
-|-------|-----------|----------|--------------|
-| **KubernetesNodeNotReady** | Node not Ready | Critical | 5 min |
-| **PodCrashLooping** | Restarts > 0.5/min | Warning | 5 min |
-| **PodNotReady** | Pod not Ready | Warning | 10 min |
-| **DeploymentReplicasMismatch** | Actual ≠ Desired replicas | Warning | 10 min |
-
-#### 3. Application Alerts
-
-| Alert | Condition | Severity | For Duration |
-|-------|-----------|----------|--------------|
-| **NginxDown** | Nginx unreachable | Critical | 2 min |
-| **HighNginxLatency** | 95th percentile > 2s | Warning | 5 min |
-
-#### 4. Backup Alerts
-
-| Alert | Condition | Severity | For Duration |
-|-------|-----------|----------|--------------|
-| **EtcdBackupMissing** | No backup in 2 hours | Critical | 5 min |
-
-### How Alerts Work
-
-```mermaid
-sequenceDiagram
-    Prometheus->>Prometheus: Evaluate alert rules (every 30s)
-    alt Condition TRUE for 'for' duration
-        Prometheus->>Prometheus: Fire alert (status: firing)
-        Note over Prometheus: Alert visible in Prometheus UI
-    else Condition FALSE
-        Prometheus->>Prometheus: Resolve alert (status: resolved)
-    end
-```
-
----
-
-## Storage Configuration
-
-### PersistentVolumeClaims (Detailed)
-
-**File:** `kubernetes/storage/nfs-pvc.yaml`
-
-PVCs request storage from the cluster. They bind to matching PVs.
-
-| PVC Name | Namespace | Storage | Bound To PV |
-|----------|-----------|---------|-------------|
-| nfs-pvc | default | 5Gi | nfs-kubernetes-pv |
-| prometheus-pvc | monitoring | 5Gi | nfs-prometheus-pv |
-| grafana-pvc | monitoring | 2Gi | nfs-grafana-pv |
-| nginx-pvc | default | 1Gi | nfs-nginx-pv |
-
-### PV-PVC Binding Flow
-
-```mermaid
-flowchart LR
-    subgraph "Cluster Resources"
-        PV1[PV: nfs-prometheus-pv<br/>labels: app=prometheus]
-        PVC1[PVC: prometheus-pvc<br/>selector: app=prometheus]
-    end
-    
-    PVC1 -->|Selector matches labels| PV1
-    PV1 -->|Bound| PVC1
-```
-
----
-
-## RBAC Configuration (Detailed)
-
-**File:** `kubernetes/security/pss-rbac.yaml`
-
-### Pod Security Standards Enforcement
-
-The `default` namespace has these labels applied:
-
-```yaml
-pod-security.kubernetes.io/enforce: baseline      # Block non-compliant pods
-pod-security.kubernetes.io/warn: restricted       # Warn about restricted violations
-pod-security.kubernetes.io/audit: restricted      # Log restricted violations
-```
-
-### RBAC — ServiceAccount-Based Access Control
-
-**File:** `kubernetes/security/pss-rbac.yaml`
-
-#### ServiceAccounts & Roles
-
-| ServiceAccount | Scope | Role | Permissions |
-|----------------|-------|------|-------------|
-| `developer` | default namespace | `developer-role` (Role) | Read pods, logs, services, deployments, events, configmaps |
-| *unbound* | cluster-wide | `cluster-viewer` (ClusterRole) | Read-only access to nodes, namespaces, pods, services, deployments |
-| *unbound* | default namespace | `deployer-role` (Role) | Create/update deployments, read pods/services/configmaps |
-| `prometheus` | cluster-wide | `prometheus` (ClusterRole) | Read nodes, services, endpoints, pods, ingresses, /metrics |
-| `kube-state-metrics` | cluster-wide | `kube-state-metrics` (ClusterRole) | List/watch all K8s objects |
-| `falco` | cluster-wide | `falco` (ClusterRole) | Read nodes, pods, deployments, daemonsets |
-| `node-exporter` | monitoring ns | *none* | No API access needed (reads host files directly) |
-
----
-
-## Nginx Sample Workload (Detailed)
-
-**File:** `kubernetes/nginx/deployment.yaml`
-
-### Self-Healing Features
-
-```mermaid
-flowchart TD
-    subgraph "Health Probes"
-        A[livenessProbe] -->|Fail 3 times| B[Container Restart]
-        C[readinessProbe] -->|Fail| D[Remove from Service]
-    end
-    
-    subgraph "Auto-Recovery"
-        E[Pod Deleted] --> F[ReplicaSet detects]
-        F --> G[Creates new Pod]
-        G --> H[Mounts nginx-pvc from NFS]
-        H --> I[Web content persists]
-    end
-
-    subgraph "Persistent Storage"
-        J[nginx-pvc 1Gi] -->|NFS| K["/srv/nfs/kubernetes/nginx"]
-        L["nginx-cache emptyDir"] -.->|Ephemeral| M["Recreated per pod"]
-    end
-```
-
-### Probe Configuration
-
-| Probe | Path | Port | Initial Delay | Period | Failure Threshold |
-|-------|------|------|---------------|--------|-------------------|
-| livenessProbe | / | 8080 | 10s | 5s | 3 |
-| readinessProbe | / | 8080 | 5s | 3s | Default |
-
-### Persistent Storage
-
-Nginx web content is stored on NFS via the `nginx-pvc` PersistentVolumeClaim, ensuring data persists across pod restarts and rescheduling:
-
-| Volume | Mount Path | Type | Purpose |
-|--------|-----------|------|--------|
-| `nginx-html` | `/usr/share/nginx/html` | **PVC (`nginx-pvc`)** | Web content — persists across restarts |
-| `nginx-cache` | `/var/cache/nginx` | emptyDir | Ephemeral cache — recreated per pod |
-| `nginx-run` | `/var/run` | emptyDir | PID file — node-specific runtime data |
-
-### Security Context (PSS Compliant)
-
-```yaml
-Pod-level:
-  runAsNonRoot: true
-  runAsUser: 101 (nginx user)
-  seccompProfile: RuntimeDefault
-
-Container-level:
-  allowPrivilegeEscalation: false
-  capabilities: drop ALL
-```
-
-### Rolling Update Strategy
-
-```yaml
-strategy:
-  type: RollingUpdate
-  maxSurge: 1          # One extra pod during update
-  maxUnavailable: 0    # Zero downtime
-```
-
----
-
-### NFS Architecture
-
-```mermaid
-graph TB
-    subgraph "NFS Server (192.168.144.132)"
-        NFS["/srv/nfs/kubernetes"]
-        NFS1["/prometheus"]
-        NFS2["/grafana"]
-        NFS3["/nginx"]
-        NFS4["/etcd-backups"]
-    end
-    
-    subgraph "Kubernetes Cluster"
-        PV1[PV: nfs-kubernetes-pv<br/>10Gi]
-        PV2[PV: nfs-prometheus-pv<br/>5Gi]
-        PV3[PV: nfs-grafana-pv<br/>2Gi]
-        PV4[PV: nfs-nginx-pv<br/>1Gi]
-        
-        SC[StorageClass: nfs-storage]
-    end
-    
-    NFS --> PV1
-    NFS1 --> PV2
-    NFS2 --> PV3
-    NFS3 --> PV4
-```
-
-### PersistentVolume Configuration
-
-**File:** `kubernetes/storage/nfs-pv.yaml`
-
-| PV Name | Capacity | Access Mode | NFS Path |
-|---------|----------|-------------|----------|
-| nfs-kubernetes-pv | 10Gi | ReadWriteMany | /srv/nfs/kubernetes |
-| nfs-prometheus-pv | 5Gi | ReadWriteMany | /srv/nfs/kubernetes/prometheus |
-| nfs-grafana-pv | 2Gi | ReadWriteMany | /srv/nfs/kubernetes/grafana |
-| nfs-nginx-pv | 1Gi | ReadWriteMany | /srv/nfs/kubernetes/nginx |
-
----
-
-## Security Implementation
-
-### Multi-Layer Security Model
-
-```mermaid
-graph TB
-    subgraph "Layer 1: Node Security"
-        A[UFW Firewall]
-        B[SSH Hardening]
-        C[Kernel Parameters]
-    end
-    
-    subgraph "Layer 2: Kubernetes Security"
-        D[Pod Security Standards]
-        E[RBAC]
-        F[Service Accounts]
-    end
-    
-    subgraph "Layer 3: Network Security"
-        G[Network Policies]
-        H[Default Deny Ingress]
-    end
-    
-    subgraph "Layer 4: Runtime Security"
-        I[Falco]
-        J[Container Security Context]
-    end
-    
-    A --> D
-    D --> G
-    G --> I
-```
-
-### Network Policies
-
-**File:** `kubernetes/security/network-policy.yaml`
-
-| Policy | Target | Rule |
-|--------|--------|------|
-| default-deny-ingress | All pods in default | Block all incoming traffic |
-| default-deny-egress | All pods in default | Block all outgoing traffic |
-| allow-dns-egress | All pods in default | Allow DNS resolution (UDP/TCP 53) |
-| allow-nginx-ingress | nginx pods | Allow traffic on port 8080 |
-| allow-nginx-egress | nginx pods | Allow NFS egress (port 2049) |
-| allow-prometheus-scrape | All pods | Allow from monitoring namespace (ports 8080, 9100) |
-
-### Pod Security Standards (PSS)
-
-The project uses **baseline** PSS level:
-
-```yaml
-# Applied to default namespace
-pod-security.kubernetes.io/enforce: baseline
-pod-security.kubernetes.io/warn: baseline
-pod-security.kubernetes.io/audit: baseline
-```
-
-#### What does "baseline" actually do?
-
-The `baseline` policy is the middle-tier security level. It is designed to prevent known privilege escalations while remaining "minimally restrictive" so most common apps still work without complex configuration.
-
-| Feature | Baseline Policy Action | Why? |
-|---------|-----------------------|------|
-| **Host Process** | ❌ **Blocked** | Prevents containers from accessing host-level processes. |
-| **Host Network/Ports** | ❌ **Blocked** | Prevents containers from sniffing host traffic or bypassing K8s network rules. |
-| **Privileged Containers** | ❌ **Blocked** | Prevents containers from having root-like access to the worker node. |
-| **Capabilities** | ⚠️ **Restricted** | Blocks dangerous Linux capabilities like `SYS_ADMIN` or `NET_ADMIN`. |
-| **HostPath Volumes** | ❌ **Restricted** | Prevents containers from reading/writing directly to the node's disk (e.g., `/etc/shadow`). |
-| **Seccomp** | ✅ **Allowed** | Uses the runtime default profile. |
-
-**In short:** If a developer tries to deploy a pod that says `privileged: true` or `hostNetwork: true` in the `default` namespace, **Kubernetes will reject it** because of this policy.
-
----
-
-## Runtime Security with Falco
-
-**File:** `kubernetes/falco/falco.yaml`
-
-Falco provides real-time threat detection by monitoring system calls.
-
-### Deployment Type
-
-- **DaemonSet**: Runs on every node
-- **Privileged mode**: Required for syscall monitoring
-- **Host network/PID**: Full visibility into host activities
-
-### Detection Rules
-
-| Rule | Priority | Detection |
-|------|----------|-----------|
-| Shell Spawned in Container | WARNING | bash/sh/zsh execution in containers |
-| Sensitive File Access | CRITICAL | Reading /etc/shadow, /etc/passwd, admin.conf |
-| Kubectl Exec Detected | NOTICE | Interactive shell via kubectl exec |
-
-### Integration with Prometheus
-
-```yaml
-webserver:
-  enabled: true
-  listen_port: 8765  # Scraped by Prometheus
-metrics:
-  enabled: true
-  interval: 30s
-```
-
----
-
-## Backup and Diagnostics
-
-### etcd Backup Script
-
-**File:** `scripts/etcd-backup.sh`
-
-Automated hourly backup of cluster state:
-
-```mermaid
-flowchart LR
-    A[Cron: Every Hour] --> B[Create etcd Snapshot]
-    B --> C[Verify Snapshot]
-    C --> D{NFS Available?}
-    D -->|Yes| E[Copy to NFS]
-    D -->|No| F[Keep Local Only]
-    E --> G[Cleanup Old Backups]
-    F --> G
-```
-
-**Retention Policy:**
-- Local: 24 hourly backups
-- NFS: 7 daily backups
-
-### Diagnostic Script
-
-**File:** `scripts/diagnose-services.sh`
-
-Run on master to troubleshoot issues:
-
+### Commands:
 ```bash
-./diagnose-services.sh
-```
-
-**Checks performed:**
-1. Cluster connectivity
-2. Node status
-3. Namespace existence
-4. PV/PVC binding status
-5. Deployment status
-6. Pod health
-7. Service endpoints
-8. Firewall rules
-9. NFS connectivity
-
----
-
-## Service Access
-
-After deployment, access services via NodePort:
-
-| Service | URL | Credentials | Port Mapping |
-|---------|-----|-------------|--------------|
-| **Prometheus** | http://192.168.144.130:30090 | N/A | 30090 → 9090 |
-| **Grafana** | http://192.168.144.130:30300 | admin / K8sGrafana@2024! | 30300 → 3000 |
-| **Nginx** | http://192.168.144.130:30080 | N/A | 30080 → 8080 |
-
-### Verification Commands
-
-```bash
-# Check cluster status
+# Check cluster health
+kubectl cluster-info
 kubectl get nodes -o wide
 
-# Check all pods
-kubectl get pods --all-namespaces
+# Check all system pods
+kubectl get pods -n kube-system
 
-# Test self-healing (delete a pod, watch it recreate)
-kubectl delete pod <nginx-pod-name>
-kubectl get pods -w
+# Check component status
+kubectl get componentstatuses
 
-# View Prometheus targets
+# Generate a new join token (if old one expired after 24h)
+kubeadm token create --print-join-command
+```
+
+### Example Output:
+```bash
+$ kubectl get nodes -o wide
+NAME          STATUS   ROLES           AGE   VERSION   INTERNAL-IP
+k8s-master    Ready    control-plane   10m   v1.29.x   192.168.144.130
+k8s-worker1   Ready    <none>          8m    v1.29.x   192.168.144.134
+```
+
+---
+
+## 5. CNI Networking — Flannel
+
+### WHY Flannel?
+| Question | Answer |
+|---|---|
+| What is CNI? | Container Network Interface — lets pods on different nodes talk to each other |
+| Why pods need a CNI? | Without it, pods can only talk to pods on the SAME node |
+| Why Flannel over Calico? | Flannel uses ~50MB RAM vs Calico's ~200MB. In 8GB setup, every MB matters |
+| Tradeoff? | Flannel doesn't provide Network Policies natively, but Kubernetes handles them anyway |
+
+### HOW it works:
+```
+Pod A (Node 1: 10.244.0.5)          Pod B (Node 2: 10.244.1.3)
+        │                                    ▲
+        ▼                                    │
+   flannel.1 (VXLAN tunnel)  ═══════>   flannel.1 (VXLAN tunnel)
+        │                                    │
+   eth0 (192.168.144.130)    ────────>  eth0 (192.168.144.134)
+```
+
+Flannel creates a **VXLAN overlay network** — it wraps pod traffic inside regular network packets so pods on different physical nodes can communicate.
+
+### Installation (done by Ansible):
+```bash
+kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+```
+
+### Commands:
+```bash
+# Check Flannel pods are running
+kubectl get pods -n kube-flannel
+
+# Check pod CIDR allocation
+kubectl get nodes -o jsonpath='{.items[*].spec.podCIDR}'
+# Output: 10.244.0.0/24  10.244.1.0/24
+
+# Check Flannel interface on a node
+ip addr show flannel.1
+```
+
+---
+
+## 6. NFS Storage (PV, PVC, StorageClass)
+
+### WHY NFS?
+| Question | Answer |
+|---|---|
+| Why do pods need persistent storage? | Without it, data is **lost** when a pod restarts |
+| Why NFS? | Supports `ReadWriteMany` — multiple pods can write simultaneously |
+| Why not hostPath? | hostPath ties data to one node. If pod moves to another node, data is lost |
+| Why a separate NFS server? | Keeps data safe even if the entire Kubernetes cluster dies |
+
+### HOW the storage chain works:
+```
+NFS Server                     Kubernetes Cluster                Pod
+┌─────────────┐    ┌──────────────────────────────────┐    ┌──────────┐
+│ /srv/nfs/    │    │                                  │    │          │
+│ kubernetes/  │◄───│ PV (points to NFS path)          │◄───│ Volume   │
+│ prometheus/  │    │   ↕                              │    │ Mount    │
+│              │    │ PVC (requests storage from PV)   │    │          │
+│              │    │   ↕                              │    │          │
+│              │    │ StorageClass (groups PVs by type) │    │          │
+└─────────────┘    └──────────────────────────────────┘    └──────────┘
+```
+
+### The 3 Kubernetes objects explained:
+
+#### 1. StorageClass — "What TYPE of storage is available?"
+**File**: `kubernetes/storage/storage-class.yaml`
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-storage           # Name other objects reference
+provisioner: kubernetes.io/no-provisioner  # Manual provisioning
+volumeBindingMode: Immediate   # Bind PVC to PV right away
+reclaimPolicy: Retain          # Don't delete data when PVC is removed
+```
+**WHY `Immediate`?** NFS supports ReadWriteMany, so PVC can bind immediately without waiting for a pod.
+
+#### 2. PersistentVolume (PV) — "Here is ACTUAL storage"
+**File**: `kubernetes/storage/nfs-pv.yaml`
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-prometheus-pv
+  labels:
+    app: prometheus          # Label that PVC will match
+spec:
+  capacity:
+    storage: 5Gi             # How much space
+  accessModes:
+    - ReadWriteMany          # Multiple pods can read/write
+  storageClassName: nfs-storage
+  nfs:
+    server: 192.168.144.132  # NFS server IP
+    path: /srv/nfs/kubernetes/prometheus  # Directory on NFS
+```
+
+#### 3. PersistentVolumeClaim (PVC) — "I NEED storage"
+**File**: `kubernetes/storage/nfs-pvc.yaml`
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+  namespace: monitoring
+spec:
+  storageClassName: nfs-storage
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  selector:
+    matchLabels:
+      app: prometheus        # Must match PV label!
+```
+
+### All PV/PVC pairs in this project:
+
+| PV Name | Size | PVC Name | Used By | NFS Path |
+|---|---|---|---|---|
+| `nfs-kubernetes-pv` | 10Gi | `nfs-pvc` | General data | `/srv/nfs/kubernetes` |
+| `nfs-prometheus-pv` | 5Gi | `prometheus-pvc` | Prometheus metrics | `/srv/nfs/kubernetes/prometheus` |
+| `nfs-grafana-pv` | 2Gi | `grafana-pvc` | Grafana config | `/srv/nfs/kubernetes/grafana` |
+| `nfs-nginx-pv` | 1Gi | `nginx-pvc` | Nginx web content | `/srv/nfs/kubernetes/nginx` |
+
+### Commands:
+```bash
+# Check PVs and their status
+kubectl get pv
+# Expected: STATUS = Available (unbound) or Bound
+
+# Check PVCs and binding
+kubectl get pvc --all-namespaces
+# Expected: STATUS = Bound (linked to a PV)
+
+# Verify NFS mount from a node
+showmount -e 192.168.144.132
+# Output: /srv/nfs/kubernetes  *
+
+# Test NFS connectivity
+ping -c 1 192.168.144.132
+```
+
+### Example Output:
+```
+$ kubectl get pv
+NAME                 CAPACITY   ACCESS MODES   STATUS   CLAIM
+nfs-prometheus-pv    5Gi        RWX            Bound    monitoring/prometheus-pvc
+nfs-grafana-pv       2Gi        RWX            Bound    monitoring/grafana-pvc
+nfs-nginx-pv         1Gi        RWX            Bound    default/nginx-pvc
+```
+
+---
+
+## 7. Monitoring Stack (Prometheus + Grafana)
+
+### WHY Prometheus?
+| Question | Answer |
+|---|---|
+| Why do we need monitoring? | Without it, you're blind — you don't know if things are healthy until users complain |
+| Why Prometheus specifically? | It's the **industry standard** for Kubernetes. Pull-based, powerful query language (PromQL), cloud-native |
+| What does it collect? | CPU, memory, disk, network, pod status, API server health, Falco security events |
+| How does it collect? | **Scrapes** HTTP endpoints every 30 seconds |
+
+### HOW Prometheus works:
+```
+Every 30 seconds:
+
+    Node Exporter (:9100)     ─── GET /metrics ──→  PROMETHEUS (:9090)
+    KSM (:8080)               ─── GET /metrics ──→  (stores in time-series DB)
+    Kubernetes API (:6443)    ─── GET /metrics ──→      │
+    Falco (:8765)             ─── GET /metrics ──→      │
+                                                         │
+                                     ┌───────────────────┘
+                                     ▼
+                              GRAFANA (:3000)
+                              "Show me CPU for last 1h"
+                              → Queries Prometheus via PromQL
+                              → Displays graphs/gauges
+```
+
+### Key Configuration:
+**File**: `kubernetes/monitoring/prometheus.yaml`
+```yaml
+# ConfigMap contains prometheus.yml config
+global:
+  scrape_interval: 30s     # How often to collect metrics
+  evaluation_interval: 30s # How often to check alert rules
+
+# What to scrape:
+scrape_configs:
+  - job_name: 'prometheus'            # Scrape itself
+    static_configs:
+      - targets: ['localhost:9090']
+  
+  - job_name: 'node-exporter'         # Scrape node metrics
+    kubernetes_sd_configs:             # Auto-discover nodes
+      - role: node
+    relabel_configs:
+      - target_label: __address__
+        replacement: ${1}:9100        # Connect on port 9100
+
+  - job_name: 'kube-state-metrics'    # Scrape K8s object state
+    static_configs:
+      - targets: ['kube-state-metrics:8080']
+```
+
+**Prometheus resource settings:**
+```yaml
+args:
+  - '--storage.tsdb.retention.time=3d'   # Keep data for 3 days
+  - '--storage.tsdb.retention.size=1GB'  # Max 1GB disk usage
+resources:
+  limits:
+    memory: "512Mi"  # Max RAM for Prometheus
+```
+
+### WHY Grafana?
+| Question | Answer |
+|---|---|
+| Can't Prometheus show graphs? | It can, but they're basic. Grafana provides **beautiful dashboards** |
+| What dashboards are pre-built? | Cluster Overview, Node Metrics, Pod Resources, Falco Security |
+| How does it connect? | Datasource points to `http://prometheus:9090` |
+
+### Grafana credentials:
+**File**: `kubernetes/monitoring/grafana-secret.yaml`
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-credentials
+  namespace: monitoring
+type: Opaque
+stringData:
+  admin-user: admin
+  admin-password: K8sGrafana@2024!
+```
+**WHY a Secret?** Never hardcode passwords in deployment files. K8s Secrets are base64-encoded and can be managed centrally.
+
+### Commands:
+```bash
+# Check monitoring pods
+kubectl get pods -n monitoring
+
+# Check Prometheus targets (what it's scraping)
 curl http://192.168.144.130:30090/targets
 
-# Check Falco logs
-kubectl logs -n falco -l app=falco
+# Check active alerts
+curl http://192.168.144.130:30090/api/v1/alerts
+
+# Access in browser
+# Prometheus: http://<master-ip>:30090
+# Grafana:    http://<master-ip>:30300  (admin / K8sGrafana@2024!)
+
+# Example PromQL query — average CPU usage
+# In Prometheus UI: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
 ```
 
 ---
 
-## Data Flow Diagram
+## 8. Metrics Exporters (Node Exporter + KSM)
 
-### Complete System Flow
+### WHY Node Exporter?
+| Question | Answer |
+|---|---|
+| What does it do? | Reads CPU/RAM/disk/network from the **Linux kernel** and exposes as Prometheus metrics |
+| Why needed? | Prometheus can't read kernel data directly. Node Exporter translates it |
+| How is it deployed? | **DaemonSet** — automatically runs one pod on every node |
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Ansible
-    participant Master
-    participant Worker
-    participant NFS
-    
-    User->>Ansible: ansible-playbook site.yml
-    
-    rect rgb(200, 220, 240)
-        Note over Ansible,Worker: Phase 1-2: Setup all nodes
-        Ansible->>Master: common + security roles
-        Ansible->>Worker: common + security roles
-    end
-    
-    rect rgb(200, 240, 200)
-        Note over Ansible,Master: Phase 3: Initialize Master
-        Ansible->>Master: k8s_master role
-        Master->>Master: kubeadm init
-        Master->>Master: Install Flannel CNI
-        Master->>Master: Generate join token
-    end
-    
-    rect rgb(240, 220, 200)
-        Note over Ansible,Worker: Phase 4: Join Workers
-        Ansible->>Worker: k8s_worker role
-        Worker->>Master: kubeadm join
-    end
-    
-    rect rgb(240, 200, 240)
-        Note over Master,NFS: Phase 5: Deploy Services
-        Master->>NFS: Create PVs (storage)
-        Master->>Master: Deploy Prometheus
-        Master->>Master: Deploy Grafana
-        Master->>Master: Deploy Nginx
-        Master->>Master: Apply Security Policies
-        Master->>Master: Deploy Falco
-    end
-    
-    User->>Master: Access Services (NodePorts)
+### HOW Node Exporter works:
+```
+Linux Kernel (/proc, /sys)          Node Exporter Pod          Prometheus
+┌─────────────────────┐    reads    ┌──────────────┐   scrapes  ┌──────────┐
+│ /proc/stat (CPU)    │───────────→ │ Converts to  │──────────→ │ Stores   │
+│ /proc/meminfo (RAM) │            │ Prometheus   │           │ metrics  │
+│ /sys/class/net      │            │ format on    │           │ as time- │
+│ /proc/diskstats     │            │ port :9100   │           │ series   │
+└─────────────────────┘            └──────────────┘           └──────────┘
+```
+
+**Key metrics exposed:**
+| Metric | What It Measures | Example |
+|---|---|---|
+| `node_cpu_seconds_total` | CPU time per core | "Core 0 spent 3600s in idle mode" |
+| `node_memory_MemAvailable_bytes` | Available RAM | "2.5 GB free" |
+| `node_filesystem_avail_bytes` | Free disk space | "15 GB available on /dev/sda1" |
+| `node_network_receive_bytes_total` | Network traffic in | "500 MB received on eth0" |
+
+### WHY Kube-State-Metrics (KSM)?
+| Question | Answer |
+|---|---|
+| How is KSM different from Node Exporter? | Node Exporter = **hardware** metrics. KSM = **Kubernetes object** metrics |
+| Without KSM? | Grafana shows "No Data" for pod counts, deployment status, node conditions |
+| What does it read? | Kubernetes API — pods, deployments, services, nodes, PVCs |
+
+**Key KSM metrics:**
+| Metric | What It Tells You |
+|---|---|
+| `kube_pod_status_phase{phase="Running"}` | How many pods are running |
+| `kube_deployment_status_replicas_available` | Are all deployment replicas up? |
+| `kube_node_status_condition{condition="Ready"}` | Is the node healthy? |
+| `kube_pod_container_status_restarts_total` | Is a pod crash-looping? |
+
+### Commands:
+```bash
+# Check Node Exporter is running on all nodes
+kubectl get pods -n monitoring -l app=node-exporter -o wide
+
+# Manually scrape Node Exporter metrics
+curl http://<node-ip>:9100/metrics | head -20
+
+# Check KSM is running
+kubectl get pods -n monitoring -l app=kube-state-metrics
+
+# Query a specific KSM metric
+curl http://kube-state-metrics:8080/metrics | grep kube_pod_status_phase
 ```
 
 ---
 
-## Quick Reference
+## 9. Nginx Application
 
-### Configuration Variables (group_vars/all.yml)
+### WHY Nginx?
+It's the **sample workload** that demonstrates Kubernetes features: self-healing, rolling updates, persistent storage, autoscaling, and PSS compliance.
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `api_server_advertise_address` | 192.168.144.130 | Master IP |
-| `nfs_server` | 192.168.144.132 | NFS server IP |
-| `kubernetes_version` | 1.29 | K8s version |
-| `cni_plugin` | flannel | Network plugin |
-| `enable_falco` | true | Runtime security |
-| `pss_level` | baseline | Pod Security Standard |
-| `allow_master_scheduling` | true | Run pods on master |
+### HOW the Nginx Deployment works:
 
-### Resource Limits (Optimized for 8GB RAM)
+**File**: `kubernetes/nginx/deployment.yaml`
 
-| Component | Memory Request | Memory Limit |
-|-----------|----------------|--------------|
-| Prometheus | 256Mi | 512Mi |
-| Grafana | 128Mi | 256Mi |
-| Nginx (per pod) | 32Mi | 64Mi |
-| Node Exporter | 30Mi | 50Mi |
-| Kube-State-Metrics | 32Mi | 64Mi |
-| Falco | 128Mi | 256Mi |
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: default
+spec:
+  replicas: 2                    # Always run 2 copies
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1                # During update: 1 extra pod
+      maxUnavailable: 0          # During update: never go below 2
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true       # Never run as root
+        runAsUser: 101           # nginx user
+        seccompProfile:
+          type: RuntimeDefault   # Use default syscall filter
+      
+      initContainers:           # Runs BEFORE nginx starts
+        - name: create-index
+          image: busybox:1.36.1
+          command: ['sh', '-c', 'echo "Welcome..." > /html/index.html']
+          # WHY: Creates default web page on first deploy
+      
+      containers:
+        - name: nginx
+          image: nginxinc/nginx-unprivileged:1.25.3-alpine
+          ports:
+            - containerPort: 8080  # Not 80! Unprivileged runs on 8080
+          
+          livenessProbe:           # "Is the container alive?"
+            httpGet:
+              path: /              # Check if nginx responds on /
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3    # 3 failures → RESTART container
+          
+          readinessProbe:          # "Can it serve traffic?"
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 3
+          
+          resources:
+            requests:
+              cpu: "50m"           # Minimum CPU guaranteed
+              memory: "32Mi"       # Minimum RAM guaranteed
+            limits:
+              cpu: "100m"          # Maximum CPU allowed
+              memory: "64Mi"       # Maximum RAM (OOM kill if exceeded)
+          
+          volumeMounts:
+            - name: nginx-html
+              mountPath: /usr/share/nginx/html  # Web content (persistent)
+      
+      volumes:
+        - name: nginx-html
+          persistentVolumeClaim:
+            claimName: nginx-pvc   # Data survives pod restarts!
+```
+
+### Self-Healing in action:
+```bash
+# See 2 running nginx pods
+$ kubectl get pods -l app=nginx
+NAME                     READY   STATUS    RESTARTS
+nginx-7b4f5d8b9c-abc12  1/1     Running   0
+nginx-7b4f5d8b9c-def34  1/1     Running   0
+
+# Delete one pod
+$ kubectl delete pod nginx-7b4f5d8b9c-abc12
+pod "nginx-7b4f5d8b9c-abc12" deleted
+
+# Within seconds, a NEW pod appears automatically
+$ kubectl get pods -l app=nginx
+NAME                     READY   STATUS    RESTARTS
+nginx-7b4f5d8b9c-def34  1/1     Running   0
+nginx-7b4f5d8b9c-xyz99  1/1     Running   0    ← NEW POD!
+```
+**WHY does this happen?** The **Deployment controller** constantly checks: "Are there 2 running pods?" If not, it creates new ones.
+
+### Access the application:
+```bash
+curl http://192.168.144.130:30080
+# Output: Welcome to Kubernetes Cluster! Running on pod: nginx-7b4f5d8b9c-def34
+```
 
 ---
 
-## Summary
+## 10. Autoscaling (HPA + Metrics Server)
 
-This project provides a **complete, automated solution** for deploying a Kubernetes cluster with:
+### WHY HPA?
+| Question | Answer |
+|---|---|
+| What is HPA? | Horizontal Pod Autoscaler — automatically adds/removes pods based on CPU/memory |
+| Why needed? | Traffic spikes shouldn't crash your app. HPA adds pods to handle load |
+| What is metrics-server? | Collects real-time CPU/memory data from kubelets. HPA needs this to make decisions |
 
-1. **One-command deployment** via Ansible
-2. **Comprehensive monitoring** with Prometheus (v2.49.1) and Grafana (v10.2.3)
-3. **Multi-layer security** from firewall to runtime protection
-4. **Self-healing workloads** with liveness/readiness probes
-5. **Autoscaling** with HPA and auto-deployed metrics-server
-6. **Persistent storage** via NFS integration
-7. **Automated backups** of cluster state
-8. **Built-in diagnostics** for troubleshooting
-9. **Secrets management** via Kubernetes Secrets
+### HOW HPA works:
+```
+                    metrics-server
+                    (collects CPU/memory)
+                          │
+                          ▼
+    HPA checks every 15s: "Is nginx CPU > 70%?"
+          │                          │
+          ▼ YES                      ▼ NO
+    "Scale UP!"                 "Keep current"
+    2 pods → 3 pods
+    (max: 5 pods)
+```
 
-The entire setup is **optimized for resource-constrained environments** (8GB RAM, 2 nodes) while maintaining production-grade security and observability.
+**File**: `kubernetes/autoscaling/nginx-hpa.yaml`
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nginx-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nginx              # Scale THIS deployment
+  minReplicas: 2             # Never go below 2
+  maxReplicas: 5             # Never go above 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70    # Scale up when CPU > 70%
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80    # Scale up when memory > 80%
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 min before scaling down
+```
+
+**Metrics Server** is auto-deployed by Ansible with `--kubelet-insecure-tls` (required for kubeadm clusters).
+
+### Commands:
+```bash
+# Check HPA status
+kubectl get hpa
+# Output: nginx-hpa  Deployment/nginx  cpu: 12%/70%  2   5   2   10m
+
+# Check metrics-server is working
+kubectl top nodes
+kubectl top pods
+
+# Simulate load (to trigger scale-up)
+kubectl run load-test --image=busybox --restart=Never -- \
+  sh -c "while true; do wget -q -O- http://nginx:8080; done"
+```
+
+---
+
+## 11. Security — RBAC
+
+### WHY RBAC?
+| Question | Answer |
+|---|---|
+| What is RBAC? | Role-Based Access Control — defines WHO can do WHAT in the cluster |
+| Why needed? | Without it, anyone with cluster access can delete pods, read secrets, etc. |
+| Our approach? | **ServiceAccount-based** (not User-based) — more Kubernetes-native |
+
+### HOW RBAC chain works:
+```
+ServiceAccount  ──binds to──→  Role/ClusterRole  ──defines──→  Permissions
+   (WHO)                         (WHAT)                        (ACTIONS)
+```
+
+**File**: `kubernetes/security/pss-rbac.yaml`
+
+### Our RBAC setup:
+
+| ServiceAccount | Role | What They Can Do |
+|---|---|---|
+| `developer` | `developer-role` (Role) | Read pods, logs, services, deployments, events in `default` ns |
+| *(any)* | `cluster-viewer` (ClusterRole) | Read-only access to nodes, namespaces, pods cluster-wide |
+| *(any)* | `deployer-role` (Role) | Create/update deployments, read pods/services in `default` ns |
+| `prometheus` | `prometheus` (ClusterRole) | Read nodes, services, endpoints, pods, ingresses, /metrics |
+| `kube-state-metrics` | `kube-state-metrics` (ClusterRole) | List/watch all Kubernetes objects |
+| `falco` | `falco` (ClusterRole) | Read nodes, pods, deployments, daemonsets |
+
+### Commands:
+```bash
+# Check what the developer SA can do
+kubectl auth can-i list pods --as=system:serviceaccount:default:developer
+# Output: yes
+
+kubectl auth can-i delete pods --as=system:serviceaccount:default:developer
+# Output: no  ← Least privilege!
+
+# List all roles
+kubectl get roles,clusterroles | grep -E "developer|deployer|cluster-viewer"
+
+# List all role bindings
+kubectl get rolebindings,clusterrolebindings | grep -E "developer|deployer|cluster-viewer"
+```
+
+---
+
+## 12. Security — Pod Security Standards
+
+### WHY PSS?
+| Question | Answer |
+|---|---|
+| What is PSS? | Kubernetes-native rules that control WHAT pods are allowed to do |
+| Why needed? | Prevents someone from deploying a container that can hack the host node |
+| What level do we use? | `baseline` enforce + `restricted` warn |
+
+### What `baseline` blocks:
+```
+❌ BLOCKED by baseline:
+   • privileged: true          → Can't get root access to host
+   • hostNetwork: true         → Can't sniff host network traffic
+   • hostPath volumes          → Can't read host's files (/etc/shadow)
+   • SYS_ADMIN capability      → Can't mount filesystems, load kernel modules
+
+✅ ALLOWED:
+   • Non-root containers
+   • seccomp profiles
+   • Normal volume mounts
+```
+
+### Applied via namespace labels:
+```bash
+kubectl label namespace default \
+  pod-security.kubernetes.io/enforce=baseline \   # BLOCK non-compliant
+  pod-security.kubernetes.io/warn=restricted \    # WARN about restricted violations
+  pod-security.kubernetes.io/audit=restricted     # LOG restricted violations
+```
+
+### Test it:
+```bash
+# Try to create a privileged pod → Should FAIL
+kubectl run test-priv --image=nginx --overrides='{
+  "spec": {"containers": [{"name": "test", "image": "nginx",
+    "securityContext": {"privileged": true}}]}
+}'
+# Error: pod "test-priv" is forbidden: violates PodSecurity "baseline:latest"
+
+# Normal pod → Should SUCCEED
+kubectl run test-normal --image=nginx
+# pod/test-normal created
+```
+
+---
+
+## 13. Security — Network Policies
+
+### WHY Network Policies?
+| Question | Answer |
+|---|---|
+| What are they? | **Firewall rules for pod-to-pod traffic** inside the cluster |
+| Why needed? | By default, ALL pods can talk to ALL other pods. That's dangerous! |
+| Our approach? | **Zero Trust** — deny everything, then allow only what's needed |
+
+### Our 6 Network Policies:
+
+| # | Policy | Direction | What It Does |
+|---|---|---|---|
+| 1 | `default-deny-ingress` | Ingress | Blocks ALL incoming traffic to pods in `default` ns |
+| 2 | `default-deny-egress` | Egress | Blocks ALL outgoing traffic from pods in `default` ns |
+| 3 | `allow-dns-egress` | Egress | Allows DNS queries (port 53) — needed for service discovery |
+| 4 | `allow-nginx-ingress` | Ingress | Allows traffic to nginx on port 8080 |
+| 5 | `allow-nginx-egress` | Egress | Allows nginx to access NFS storage (port 2049) |
+| 6 | `allow-prometheus-scrape` | Ingress | Allows Prometheus (monitoring ns) to scrape metrics |
+
+### Visual:
+```
+                    BLOCKED ❌                    ALLOWED ✅
+                    ┌─────────┐                   ┌─────────────┐
+Internet ──────────►│ DEFAULT │                   │ nginx :8080 │◄── Users
+                    │ DENY    │                   │ (ingress)   │
+Random pod ────────►│ INGRESS │                   │             │
+                    └─────────┘                   └─────────────┘
+
+Nginx pod ─────────►│ DEFAULT │                   │ DNS :53     │◄── All pods
+(any traffic out)   │ DENY    │                   │ (egress)    │
+                    │ EGRESS  │                   │             │
+                    └─────────┘                   │ NFS :2049   │◄── Nginx only
+                                                  └─────────────┘
+```
+
+### Commands:
+```bash
+# List all network policies
+kubectl get networkpolicy
+
+# Describe a specific policy
+kubectl describe networkpolicy default-deny-ingress
+
+# Test: Can nginx reach the internet? (should FAIL)
+kubectl exec -it <nginx-pod> -- wget -T5 http://google.com
+# Expected: Connection timed out (blocked by egress deny)
+
+# Test: Can you access nginx? (should SUCCEED)
+curl http://192.168.144.130:30080
+# Expected: Welcome page (allowed by allow-nginx-ingress)
+```
+
+---
+
+## 14. Security — Grafana Secrets
+
+### WHY Kubernetes Secrets?
+| Question | Answer |
+|---|---|
+| What's the problem? | Without Secrets, passwords are in plain text in YAML files committed to Git |
+| How do Secrets help? | Store sensitive data separately, referenced by pods via environment variables |
+| Are they encrypted? | Base64-encoded (not encrypted). For production, use Vault or sealed-secrets |
+
+### HOW it works:
+```yaml
+# Secret definition (grafana-secret.yaml)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-credentials
+stringData:
+  admin-user: admin
+  admin-password: K8sGrafana@2024!
+
+# Grafana deployment references it:
+env:
+  - name: GF_SECURITY_ADMIN_USER
+    valueFrom:
+      secretKeyRef:
+        name: grafana-credentials
+        key: admin-user
+```
+
+### Commands:
+```bash
+# View secret (base64 encoded)
+kubectl get secret grafana-credentials -n monitoring -o yaml
+
+# Decode a secret value
+kubectl get secret grafana-credentials -n monitoring \
+  -o jsonpath='{.data.admin-password}' | base64 -d
+# Output: K8sGrafana@2024!
+```
+
+---
+
+## 15. Security — Falco Runtime
+
+### WHY Falco?
+| Question | Answer |
+|---|---|
+| What does Falco do? | Monitors **system calls** (like a security camera for the Linux kernel) |
+| Why needed? | Catches attacks AFTER they happen — someone spawning a shell, reading /etc/shadow |
+| How does it detect threats? | Uses **eBPF** to intercept syscalls and matches against rules |
+| How is it deployed? | **DaemonSet** (one pod per node) with **privileged** access |
+
+### Detection flow:
+```
+Container process calls: execve("/bin/bash")
+        │
+        ▼
+Falco's eBPF probe intercepts the syscall
+        │
+        ▼
+Matches rule: "Shell Spawned in Container"
+        │
+        ▼
+Generates alert → stdout + Prometheus metrics (:8765)
+        │
+        ▼
+Visible in Grafana "Falco Security" dashboard
+```
+
+### Custom Rules in our project:
+| Rule Name | Priority | Triggers When |
+|---|---|---|
+| Shell Spawned in Container | ⚠️ WARNING | Someone runs `bash`, `sh`, `zsh` inside a container |
+| Sensitive File Access | 🔴 CRITICAL | Process reads `/etc/shadow`, `/etc/passwd`, `admin.conf` |
+| Kubectl Exec Detected | 📝 NOTICE | Someone uses `kubectl exec -it` |
+
+### Commands:
+```bash
+# Check Falco is running
+kubectl get pods -n falco
+
+# View Falco detection logs
+kubectl logs -n falco -l app=falco --tail=20
+
+# TRIGGER a Falco alert (for testing):
+kubectl exec -it <nginx-pod> -- /bin/sh
+# Then check Falco logs — you'll see:
+# "Notice: A shell was spawned in a container"
+
+# Check Falco metrics
+curl http://<node-ip>:8765/metrics
+```
+
+---
+
+## 16. Backup & Diagnostics
+
+### WHY etcd Backup?
+| Question | Answer |
+|---|---|
+| What is etcd? | The **database** that stores ALL Kubernetes cluster state |
+| What happens if etcd dies? | Your cluster configuration is **completely lost** — all pods, secrets, RBAC rules |
+| How do we backup? | Automated script runs **every hour** via cron |
+| Where are backups stored? | Local: `/backup/etcd/` (24 hourly) + NFS: `/mnt/nfs/etcd-backups/` (7 daily) |
+
+### Backup script: `scripts/etcd-backup.sh`
+```bash
+# What the backup script does:
+etcdctl snapshot save /backup/etcd/etcd-snapshot-$(date +%Y%m%d-%H%M%S).db \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/server.crt \
+  --key=/etc/kubernetes/pki/etcd/server.key
+
+# Verify the backup
+etcdctl snapshot status <backup-file> --write-out=table
+
+# Copy to NFS
+cp <backup-file> /mnt/nfs/etcd-backups/
+
+# Cleanup: keep 24 hourly, 7 daily
+```
+
+### Diagnostic script: `scripts/diagnose-services.sh`
+Checks 14 things at once:
+```bash
+./scripts/diagnose-services.sh
+
+# Output includes:
+# 1. Cluster connectivity ✅
+# 2. Node status ✅
+# 3. Namespace check ✅
+# 4. PV/PVC binding ✅
+# 5. Deployment status ✅
+# 6. Pod health ✅
+# ...
+# 14. NFS connectivity ✅
+```
+
+---
+
+## 17. Complete Command Reference
+
+### Cluster Management
+```bash
+kubectl cluster-info                    # Cluster health
+kubectl get nodes -o wide               # List all nodes
+kubectl get pods --all-namespaces       # ALL pods in cluster
+kubectl get svc --all-namespaces        # ALL services
+kubectl get events --sort-by='.lastTimestamp'  # Recent events
+```
+
+### Monitoring
+```bash
+kubectl get pods -n monitoring          # Monitoring pods
+kubectl top nodes                       # Node CPU/memory (needs metrics-server)
+kubectl top pods                        # Pod CPU/memory
+kubectl get hpa                         # Autoscaler status
+```
+
+### Security
+```bash
+kubectl get networkpolicy               # Network policies
+kubectl get ns default --show-labels    # Check PSS labels
+kubectl auth can-i list pods --as=system:serviceaccount:default:developer
+kubectl logs -n falco -l app=falco      # Falco alerts
+```
+
+### Storage
+```bash
+kubectl get pv                          # PersistentVolumes
+kubectl get pvc --all-namespaces        # PVC binding status
+kubectl describe pv <pv-name>           # PV details
+```
+
+### Troubleshooting
+```bash
+kubectl describe pod <pod-name>         # Why is pod failing?
+kubectl logs <pod-name>                 # Container stdout
+kubectl logs <pod-name> --previous      # Previous crash logs
+kubectl get events                      # Cluster events
+./scripts/diagnose-services.sh          # Run full diagnostics
+```
+
+### Access Services
+| Service | URL | Credentials |
+|---|---|---|
+| **Prometheus** | `http://<master-ip>:30090` | None |
+| **Grafana** | `http://<master-ip>:30300` | `admin` / `K8sGrafana@2024!` |
+| **Nginx** | `http://<master-ip>:30080` | None |
+
+---
+
+> **Remember**: The entire cluster deploys with ONE command:
+> ```bash
+> cd ansible
+> ansible-playbook -i inventory/hosts.ini site.yml
+> ```
+> Everything in this document happens automatically. You only need the commands above to **verify and troubleshoot**.
