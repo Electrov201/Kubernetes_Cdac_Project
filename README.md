@@ -41,49 +41,81 @@
 ## 🏗️ High-Level Architecture
 
 ```mermaid
+
 graph LR
     subgraph PROV["🚀 Provisioning"]
         direction TB
-        ANS["<b>Ansible Control</b>\nansible-playbook site.yml"]
+        ANS["<b>Ansible Control Machine</b><br/>ansible-playbook site.yml"]
     end
 
-    subgraph CLUSTER["☸️ Kubernetes Cluster (Ubuntu 22.04)"]
+    subgraph CLUSTER["☸️ Kubernetes Cluster (v1.29 on Ubuntu 22.04)"]
         direction TB
-        CP["<b>Control Plane (Master)</b>\nAPI, etcd, Scheduler\n192.168.144.130"]
-        DP["<b>Data Plane (Worker)</b>\nkubelet, containerd\n192.168.144.134"]
-        NET["<b>CNI Plugin</b>\nFlannel VXLAN"]
+        subgraph CP["🖥️ Master Node (192.168.144.130)"]
+            API["API Server :6443"]
+            ETCD["etcd :2379"]
+            SCHED["Scheduler"]
+            CM["Controller Manager"]
+        end
         
-        CP <-->|"Manages"| DP
+        subgraph DP["🖥️ Worker Node (192.168.144.134)"]
+            KL["kubelet"]
+            KP["kube-proxy"]
+            CRT["containerd Runtime"]
+        end
+        
+        NET["🌐 <b>Flannel CNI</b><br/>VXLAN Pod Network (10.244.0.0/16)"]
+        
+        CP <-->|"Manages via API"| DP
         DP --- NET
     end
 
-    subgraph STACK["🏗️ Core Stack"]
+    subgraph STACK["🏗️ Deployed Services"]
         direction TB
-        APP["<b>Workload</b>\nNginx App + Autoscaling (HPA)"]
-        OBS["<b>Observability</b>\nPrometheus, Grafana, KSM"]
-        SEC["<b>Security</b>\nFalco, RBAC, Network Policies"]
+        subgraph APP["⚡ Application (default ns)"]
+            NGINX["<b>Nginx Web</b><br/>2 Replicas • NodePort :30080"]
+            HPA["<b>Autoscaling (HPA)</b><br/>Scales Nginx up to 5 pods"]
+        end
+        
+        subgraph OBS["📊 Observability (monitoring ns)"]
+            PROM["<b>Prometheus</b><br/>NodePort :30090"]
+            GRAF["<b>Grafana</b><br/>NodePort :30300"]
+            MS["<b>metrics-server</b><br/>Feeds CPU/Mem to HPA"]
+        end
+        
+        subgraph SEC["🛡️ Security (falco & default ns)"]
+            FALCO["<b>Falco</b><br/>eBPF Threat Detection"]
+            NP["<b>Network Policies</b><br/>Default Deny"]
+        end
     end
 
-    subgraph PERSIST["💾 External Persistence"]
+    subgraph PERSIST["💾 External Persistence (NFS)"]
         direction TB
-        NFS["<b>NFS Server (192.168.144.132)</b>\nShared Storage for Pods"]
-        BKP["<b>Disaster Recovery</b>\nHourly etcd Snapshots"]
+        NFS["<b>NFS Server (192.168.144.132)</b><br/>StorageClasses & PVs<br/>Data for Nginx, Prometheus, Grafana"]
+        BKP["<b>Disaster Recovery</b><br/>Hourly etcd Snapshots"]
     end
 
-    PROV -->|"Deploys & Hardens"| CLUSTER
-    CLUSTER -->|"Hosts"| STACK
-    STACK -->|"Mounts PVCs to"| NFS
-    CLUSTER -.->|"Automated Backup to"| BKP
+    PROV -->|"SSH: Configures & Hardens"| CLUSTER
+    CLUSTER -->|"Runs Containers"| STACK
+    STACK -->|"Mounts storage"| NFS
+    CLUSTER -.->|"Automated Cron"| BKP
+    
+    MS -.->|"Metrics needed for"| HPA
+    HPA -.->|"Scales"| NGINX
     
     classDef prov fill:#e8f4f8,stroke:#3498db,stroke-width:2px,color:#000
     classDef cluster fill:#e8f5e9,stroke:#2ecc71,stroke-width:2px,color:#000
+    classDef cp fill:#d5f5e3,stroke:#1e8449,stroke-width:1px,color:#000
+    classDef dp fill:#d5f5e3,stroke:#1e8449,stroke-width:1px,color:#000
     classDef stack fill:#f5eef8,stroke:#9b59b6,stroke-width:2px,color:#000
     classDef persist fill:#fef9e7,stroke:#f1c40f,stroke-width:2px,color:#000
 
     class ANS prov
+    class CP cp
+    class DP dp
     class CP,DP,NET cluster
     class APP,OBS,SEC stack
     class NFS,BKP persist
+
 ```
 
 <br/>
