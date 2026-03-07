@@ -41,81 +41,92 @@
 ## 🏗️ High-Level Architecture
 
 ```mermaid
-
 graph LR
-    subgraph PROV["🚀 Provisioning"]
+    subgraph PROV["🚀 Provisioning & Config"]
         direction TB
-        ANS["<b>Ansible Control Machine</b><br/>ansible-playbook site.yml"]
+        ANS["<b>Ansible Control Machine</b><br/>Orchestrates via SSH<br/>(site.yml)"]
     end
 
-    subgraph CLUSTER["☸️ Kubernetes Cluster (v1.29 on Ubuntu 22.04)"]
+    subgraph INFRA["💻 Infrastructure Layer (Ubuntu 22.04 LTS)"]
         direction TB
-        subgraph CP["🖥️ Master Node (192.168.144.130)"]
-            API["API Server :6443"]
-            ETCD["etcd :2379"]
+        subgraph MASTER["� Master Node (192.168.144.130)"]
+            M_OS["UFW Firewall, CIS Hardened, containerd"]
+        end
+        subgraph WORKER["⚙️ Worker Node (192.168.144.134)"]
+            W_OS["UFW Firewall, CIS Hardened, containerd"]
+        end
+    end
+
+    subgraph K8S["☸️ Kubernetes Control & Data Plane (v1.29)"]
+        direction TB
+        subgraph CP["Control Plane (Master)"]
+            API["<b>API Server</b> :6443"]
+            ETCD["<b>etcd</b> :2379"]
             SCHED["Scheduler"]
             CM["Controller Manager"]
         end
         
-        subgraph DP["🖥️ Worker Node (192.168.144.134)"]
+        subgraph DP["Data Plane (Worker)"]
             KL["kubelet"]
             KP["kube-proxy"]
-            CRT["containerd Runtime"]
+            CNI["<b>Flannel CNI</b><br/>VXLAN (10.244.0.0/16)"]
         end
-        
-        NET["🌐 <b>Flannel CNI</b><br/>VXLAN Pod Network (10.244.0.0/16)"]
-        
-        CP <-->|"Manages via API"| DP
-        DP --- NET
+        CP <-->|"gRPC / API"| DP
     end
 
-    subgraph STACK["🏗️ Deployed Services"]
+    subgraph STACK["🏗️ Cluster Services & Workloads"]
         direction TB
         subgraph APP["⚡ Application (default ns)"]
-            NGINX["<b>Nginx Web</b><br/>2 Replicas • NodePort :30080"]
-            HPA["<b>Autoscaling (HPA)</b><br/>Scales Nginx up to 5 pods"]
+            NGINX["<b>Nginx Web Server</b><br/>2 Replicas • NodePort :30080"]
+            HPA["<b>Autoscaler (HPA)</b><br/>Scales Nginx (CPU/Mem)"]
         end
         
         subgraph OBS["📊 Observability (monitoring ns)"]
-            PROM["<b>Prometheus</b><br/>NodePort :30090"]
-            GRAF["<b>Grafana</b><br/>NodePort :30300"]
-            MS["<b>metrics-server</b><br/>Feeds CPU/Mem to HPA"]
+            PROM["<b>Prometheus</b><br/>NodePort :30090<br/>30s Scrape"]
+            GRAF["<b>Grafana</b><br/>NodePort :30300<br/>Pre-built Dashboards"]
+            MS["<b>metrics-server</b><br/>Cluster Resource Metrics"]
+            EX["<b>Exporters</b><br/>Node Exporter & KSM"]
         end
         
-        subgraph SEC["🛡️ Security (falco & default ns)"]
-            FALCO["<b>Falco</b><br/>eBPF Threat Detection"]
-            NP["<b>Network Policies</b><br/>Default Deny"]
+        subgraph SEC["🛡️ Security (falco & namespaces)"]
+            FALCO["<b>Falco</b><br/>Runtime Threat Detection"]
+            NP["<b>Network Policies</b><br/>Zero-Trust / Default Deny"]
+            PSS["<b>Pod Security (PSS)</b><br/>Baseline Enforcement"]
+            RBAC["<b>RBAC</b><br/>Least Privilege Access"]
         end
     end
 
-    subgraph PERSIST["💾 External Persistence (NFS)"]
+    subgraph EXT["💾 External Services"]
         direction TB
-        NFS["<b>NFS Server (192.168.144.132)</b><br/>StorageClasses & PVs<br/>Data for Nginx, Prometheus, Grafana"]
-        BKP["<b>Disaster Recovery</b><br/>Hourly etcd Snapshots"]
+        NFS["<b>NFS Server (192.168.144.132)</b><br/>Dynamic PersistentVolume Storage"]
+        BKP["<b>Backup Storage</b><br/>Hourly etcd Cron Snapshots"]
     end
 
-    PROV -->|"SSH: Configures & Hardens"| CLUSTER
-    CLUSTER -->|"Runs Containers"| STACK
-    STACK -->|"Mounts storage"| NFS
-    CLUSTER -.->|"Automated Cron"| BKP
+    PROV -->|"Applies Roles"| INFRA
+    INFRA -->|"Hosts"| K8S
+    K8S -->|"Orchestrates"| STACK
+    STACK -.->|"Read/Write PVCs"| NFS
+    K8S -.->|"Automated Backup"| BKP
     
-    MS -.->|"Metrics needed for"| HPA
+    EX -.->|"Scraped by"| PROM
+    MS -.->|"Metrics to"| HPA
     HPA -.->|"Scales"| NGINX
-    
+
     classDef prov fill:#e8f4f8,stroke:#3498db,stroke-width:2px,color:#000
-    classDef cluster fill:#e8f5e9,stroke:#2ecc71,stroke-width:2px,color:#000
+    classDef infra fill:#fef5e7,stroke:#e67e22,stroke-width:2px,color:#000
+    classDef k8s fill:#e8f5e9,stroke:#2ecc71,stroke-width:2px,color:#000
     classDef cp fill:#d5f5e3,stroke:#1e8449,stroke-width:1px,color:#000
     classDef dp fill:#d5f5e3,stroke:#1e8449,stroke-width:1px,color:#000
     classDef stack fill:#f5eef8,stroke:#9b59b6,stroke-width:2px,color:#000
-    classDef persist fill:#fef9e7,stroke:#f1c40f,stroke-width:2px,color:#000
+    classDef ext fill:#fef9e7,stroke:#f1c40f,stroke-width:2px,color:#000
 
     class ANS prov
+    class MASTER,WORKER infra
     class CP cp
     class DP dp
-    class CP,DP,NET cluster
+    class CP,DP,K8S k8s
     class APP,OBS,SEC stack
-    class NFS,BKP persist
-
+    class NFS,BKP ext
 ```
 
 <br/>
