@@ -116,7 +116,7 @@ echo "Master Node IP: $MASTER_IP"
 echo ""
 echo "Access URLs:"
 echo "  - Prometheus: http://$MASTER_IP:30090"
-echo "  - Grafana:    http://$MASTER_IP:30300  (admin/admin)"
+echo "  - Grafana:    http://$MASTER_IP:30300  (admin/K8sGrafana@2024!)"
 echo "  - Nginx:      http://$MASTER_IP:30080"
 echo ""
 
@@ -152,7 +152,7 @@ echo ""
 # Check NFS connectivity
 echo "14. NFS Server Connectivity Test:"
 echo "-------------------------------------------"
-NFS_SERVER="192.168.144.132"
+NFS_SERVER=$(kubectl get pv -o jsonpath='{.items[0].spec.nfs.server}' 2>/dev/null || echo "192.168.144.132")
 if ping -c 1 -W 2 $NFS_SERVER &> /dev/null; then
     echo "NFS Server ($NFS_SERVER) is reachable"
 else

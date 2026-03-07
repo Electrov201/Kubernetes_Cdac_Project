@@ -101,8 +101,9 @@ graph TB
 │   │   ├── 📄 prometheus-alerts.yaml
 │   │   ├── 📄 grafana.yaml
 │   │   ├── 📄 grafana-dashboards.yaml
-│   │   ├── 📄 node-exporter.yaml
-│   │   └── 📄 kube-state-metrics.yaml
+│   │   ├── 📄 grafana-secret.yaml
+│   ├── 📄 node-exporter.yaml
+│   └── 📄 kube-state-metrics.yaml
 │   ├── 📁 storage/                       # NFS PersistentVolumes
 │   │   ├── 📄 storage-class.yaml
 │   │   ├── 📄 nfs-pv.yaml
@@ -112,6 +113,8 @@ graph TB
 │   ├── 📁 security/                      # Network Policies & RBAC
 │   │   ├── 📄 network-policy.yaml
 │   │   └── 📄 pss-rbac.yaml
+│   ├── 📁 autoscaling/                  # HPA + metrics-server
+│   └── 📄 nginx-hpa.yaml
 │   └── 📁 falco/                         # Runtime security
 │       └── 📄 falco.yaml
 ├── 📁 scripts/                           # Utility scripts
@@ -353,20 +356,26 @@ After all nodes are ready, the playbook deploys cluster services.
 |-------|-----------|-----------|---------|
 | 1 | Storage (PVs, PVCs, StorageClass) | N/A (cluster-wide) | NFS persistent storage |
 | 2 | Monitoring namespace | `monitoring` | Namespace for observability |
-| 3 | Prometheus + Node Exporter + Kube-State-Metrics | `monitoring` | Metrics collection |
-| 4 | Grafana + Dashboards | `monitoring` | Visualization |
-| 5 | Prometheus Alerts | `monitoring` | Alert rules |
-| 6 | Nginx Deployment | `default` | Sample workload |
-| 7 | Network Policies + RBAC | `default` | Security policies |
-| 8 | Falco (if enabled) | `falco` | Runtime security |
+| 3 | Grafana Secret | `monitoring` | Credentials for Grafana (K8s Secret) |
+| 4 | Prometheus + Node Exporter + Kube-State-Metrics | `monitoring` | Metrics collection |
+| 5 | Grafana + Dashboards | `monitoring` | Visualization |
+| 6 | Prometheus Alerts | `monitoring` | Alert rules |
+| 7 | Nginx Deployment | `default` | Sample workload |
+| 8 | Metrics Server | `kube-system` | Resource metrics for HPA |
+| 9 | HPA | `default` | Autoscaling for nginx |
+| 10 | Network Policies + RBAC | `default` | Security policies |
+| 11 | Falco (if enabled) | `falco` | Runtime security |
 
 ### Manifest Application Flow
 
 ```bash
 # On master node via Ansible
 kubectl apply -f /opt/kubernetes/storage/
+kubectl apply -f /opt/kubernetes/monitoring/grafana-secret.yaml
 kubectl apply -f /opt/kubernetes/monitoring/
 kubectl apply -f /opt/kubernetes/nginx/
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+kubectl apply -f /opt/kubernetes/autoscaling/
 kubectl apply -f /opt/kubernetes/security/
 kubectl apply -f /opt/kubernetes/falco/  # if enable_falco=true
 ```
@@ -401,9 +410,9 @@ graph LR
 | Setting | Value | Purpose |
 |---------|-------|---------|
 | Scrape interval | 30s | Resource optimization |
-| Retention time | 2 days | Storage limit |
-| Retention size | 500MB | Disk limit |
-| Memory limit | 256Mi | 8GB RAM optimization |
+| Retention time | 3 days | Storage limit |
+| Retention size | 1GB | Disk limit |
+| Memory limit | 512Mi | Aligned with 8GB RAM budget |
 
 ### Scrape Targets
 
@@ -609,22 +618,21 @@ pod-security.kubernetes.io/warn: restricted       # Warn about restricted violat
 pod-security.kubernetes.io/audit: restricted      # Log restricted violations
 ```
 
-### Sample RBAC Role: pod-reader
+### RBAC — ServiceAccount-Based Access Control
 
-| Permission | Resources | Verbs |
-|------------|-----------|-------|
-| Read pods | pods, pods/log | get, list, watch |
-| Read services | services | get, list |
+**File:** `kubernetes/security/pss-rbac.yaml`
 
-### RoleBinding
+#### ServiceAccounts & Roles
 
-```yaml
-Subject: User "developer"
-Role: pod-reader
-Namespace: default
-```
-
-This demonstrates least-privilege access - developers can view pods but cannot modify them.
+| ServiceAccount | Scope | Role | Permissions |
+|----------------|-------|------|-------------|
+| `developer` | default namespace | `developer-role` (Role) | Read pods, logs, services, deployments, events, configmaps |
+| *unbound* | cluster-wide | `cluster-viewer` (ClusterRole) | Read-only access to nodes, namespaces, pods, services, deployments |
+| *unbound* | default namespace | `deployer-role` (Role) | Create/update deployments, read pods/services/configmaps |
+| `prometheus` | cluster-wide | `prometheus` (ClusterRole) | Read nodes, services, endpoints, pods, ingresses, /metrics |
+| `kube-state-metrics` | cluster-wide | `kube-state-metrics` (ClusterRole) | List/watch all K8s objects |
+| `falco` | cluster-wide | `falco` (ClusterRole) | Read nodes, pods, deployments, daemonsets |
+| `node-exporter` | monitoring ns | *none* | No API access needed (reads host files directly) |
 
 ---
 
@@ -775,8 +783,11 @@ graph TB
 | Policy | Target | Rule |
 |--------|--------|------|
 | default-deny-ingress | All pods in default | Block all incoming traffic |
+| default-deny-egress | All pods in default | Block all outgoing traffic |
+| allow-dns-egress | All pods in default | Allow DNS resolution (UDP/TCP 53) |
 | allow-nginx-ingress | nginx pods | Allow traffic on port 8080 |
-| allow-prometheus-scrape | All pods | Allow from monitoring namespace |
+| allow-nginx-egress | nginx pods | Allow NFS egress (port 2049) |
+| allow-prometheus-scrape | All pods | Allow from monitoring namespace (ports 8080, 9100) |
 
 ### Pod Security Standards (PSS)
 
@@ -892,7 +903,7 @@ After deployment, access services via NodePort:
 | Service | URL | Credentials | Port Mapping |
 |---------|-----|-------------|--------------|
 | **Prometheus** | http://192.168.144.130:30090 | N/A | 30090 → 9090 |
-| **Grafana** | http://192.168.144.130:30300 | admin / admin | 30300 → 3000 |
+| **Grafana** | http://192.168.144.130:30300 | admin / K8sGrafana@2024! | 30300 → 3000 |
 | **Nginx** | http://192.168.144.130:30080 | N/A | 30080 → 8080 |
 
 ### Verification Commands
@@ -984,9 +995,11 @@ sequenceDiagram
 
 | Component | Memory Request | Memory Limit |
 |-----------|----------------|--------------|
-| Prometheus | 128Mi | 256Mi |
-| Grafana | 64Mi | 128Mi |
+| Prometheus | 256Mi | 512Mi |
+| Grafana | 128Mi | 256Mi |
 | Nginx (per pod) | 32Mi | 64Mi |
+| Node Exporter | 30Mi | 50Mi |
+| Kube-State-Metrics | 32Mi | 64Mi |
 | Falco | 128Mi | 256Mi |
 
 ---
@@ -996,11 +1009,13 @@ sequenceDiagram
 This project provides a **complete, automated solution** for deploying a Kubernetes cluster with:
 
 1. **One-command deployment** via Ansible
-2. **Comprehensive monitoring** with Prometheus and Grafana
+2. **Comprehensive monitoring** with Prometheus (v2.49.1) and Grafana (v10.2.3)
 3. **Multi-layer security** from firewall to runtime protection
 4. **Self-healing workloads** with liveness/readiness probes
-5. **Persistent storage** via NFS integration
-6. **Automated backups** of cluster state
-7. **Built-in diagnostics** for troubleshooting
+5. **Autoscaling** with HPA and auto-deployed metrics-server
+6. **Persistent storage** via NFS integration
+7. **Automated backups** of cluster state
+8. **Built-in diagnostics** for troubleshooting
+9. **Secrets management** via Kubernetes Secrets
 
 The entire setup is **optimized for resource-constrained environments** (8GB RAM, 2 nodes) while maintaining production-grade security and observability.

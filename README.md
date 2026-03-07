@@ -76,8 +76,8 @@ graph TB
 
         subgraph MON["📊 Monitoring Stack — namespace: monitoring"]
             direction LR
-            PROM["<b>Prometheus</b><br/>NodePort :30090<br/>Scrape interval: 30s<br/>Retention: 2d / 500MB"]
-            GRAF["<b>Grafana</b><br/>NodePort :30300<br/>4 pre-built dashboards<br/>Login: admin/admin"]
+            PROM["<b>Prometheus</b><br/>NodePort :30090<br/>Scrape interval: 30s<br/>Retention: 3d / 1GB"]
+            GRAF["<b>Grafana</b><br/>NodePort :30300<br/>4 pre-built dashboards<br/>Login: admin/K8sGrafana@2024!"]
         end
 
         subgraph METRICS["📈 Metrics Exporters — namespace: monitoring"]
@@ -94,9 +94,9 @@ graph TB
         subgraph SEC["🛡️ Security Layer"]
             direction LR
             FALCO["<b>Falco</b><br/>DaemonSet<br/>namespace: falco<br/>Runtime threat detection"]
-            NP["<b>Network Policies</b><br/>default-deny-ingress<br/>allow-nginx :8080<br/>allow-prometheus-scrape"]
+            NP["<b>Network Policies</b><br/>default-deny ingress+egress<br/>allow-nginx :8080<br/>allow-dns, allow-NFS"]
             PSS["<b>Pod Security</b><br/><b>Standards</b><br/>enforce: baseline<br/>warn: restricted"]
-            RBAC["<b>RBAC</b><br/>pod-reader Role<br/>developer Binding<br/>Least-privilege"]
+            RBAC["<b>RBAC</b><br/>ServiceAccount-based<br/>developer + deployer<br/>Least-privilege"]
         end
     end
 
@@ -201,14 +201,17 @@ flowchart TD
         direction TB
         P4A["1. Copy manifests\n→ /opt/kubernetes/"]
         P4B["2. kubectl apply storage/\nStorageClass + PV + PVC"]
-        P4C["3. kubectl apply monitoring/\nPrometheus + Grafana\nNode Exporter + KSM"]
-        P4D["4. kubectl apply nginx/\nDeployment + Service"]
-        P4E["5. kubectl apply security/\nNetworkPolicy + RBAC"]
+        P4C2["3. Apply grafana-secret\nK8s Secret for creds"]
+        P4C["4. kubectl apply monitoring/\nPrometheus + Grafana\nNode Exporter + KSM"]
+        P4D["5. kubectl apply nginx/\nDeployment + Service"]
+        P4D2["6. Deploy metrics-server\n+ patch --kubelet-insecure-tls"]
+        P4D3["7. kubectl apply autoscaling/\nHPA for nginx"]
+        P4E["8. kubectl apply security/\nNetworkPolicy + RBAC"]
         P4F{"Falco\nenabled?"}
-        P4G["6. kubectl apply falco/\nNamespace + DaemonSet"]
+        P4G["9. kubectl apply falco/\nNamespace + DaemonSet"]
         P4H["Skip"]
 
-        P4A --> P4B --> P4C --> P4D --> P4E --> P4F
+        P4A --> P4B --> P4C2 --> P4C --> P4D --> P4D2 --> P4D3 --> P4E --> P4F
         P4F -->|"Yes"| P4G
         P4F -->|"No"| P4H
     end
@@ -241,13 +244,13 @@ graph LR
 
     subgraph ENGINE["⚙️ Processing"]
         direction TB
-        PROM["<b>Prometheus</b>\n:9090 → NodePort :30090\n\nRetention: 2 days\nStorage: 500MB on NFS\nScrape interval: 30s"]
+        PROM["<b>Prometheus</b>\n:9090 → NodePort :30090\n\nRetention: 3 days\nStorage: 1GB on NFS\nScrape interval: 30s"]
         ALERTS["<b>Alert Rules</b>\n\n🔴 NodeDown\n🟡 HighCPU > 80%\n🟡 HighMem > 85%\n🟡 DiskLow < 15%\n🟡 PodCrashLooping"]
     end
 
     subgraph VISUAL["📺 Visualization"]
         direction TB
-        GRAF["<b>Grafana</b>\n:3000 → NodePort :30300\nLogin: admin / admin"]
+        GRAF["<b>Grafana</b>\n:3000 → NodePort :30300\nLogin: admin / K8sGrafana@2024!"]
         DASH["<b>Pre-built Dashboards</b>\n\n📊 Cluster Overview\n📈 Node Metrics\n📦 Pod Resources\n🔒 Falco Security"]
     end
 
@@ -284,13 +287,13 @@ graph TB
     subgraph L2["<b>☸️ Layer 2 — Kubernetes Security</b><br/>(Pod Security + RBAC)"]
         direction LR
         PSS_D["<b>Pod Security Standards</b>\nenforce: baseline\nBlocks: privileged,\nhostNetwork, hostPath,\ndangerous capabilities"]
-        RBAC_D["<b>RBAC</b>\npod-reader Role\ndeveloper RoleBinding\nLeast-privilege access"]
+        RBAC_D["<b>RBAC</b>\nServiceAccount-based\ndeveloper + deployer Roles\nLeast-privilege access"]
     end
 
     subgraph L3["<b>🌐 Layer 3 — Network Security</b><br/>(NetworkPolicy manifests)"]
         direction LR
-        NP1["<b>default-deny-ingress</b>\nBlocks ALL traffic\nto default namespace"]
-        NP2["<b>allow-nginx-ingress</b>\nOpens :8080 to\nnginx pods only"]
+        NP1["<b>default-deny ingress+egress</b>\nBlocks ALL traffic\nin/out of default namespace"]
+        NP2["<b>allow-nginx + DNS + NFS</b>\nOpens :8080, DNS :53\nNFS :2049 for nginx"]
         NP3["<b>allow-prometheus-scrape</b>\nAllows monitoring NS\nto scrape default NS"]
     end
 
@@ -497,7 +500,7 @@ kubectl get pods -w
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | **Prometheus** | `http://<master-ip>:30090` | No login |
-| **Grafana** | `http://<master-ip>:30300` | `admin` / `admin` |
+| **Grafana** | `http://<master-ip>:30300` | `admin` / `K8sGrafana@2024!` |
 | **Nginx** | `http://<master-ip>:30080` | No login |
 
 ---
@@ -532,7 +535,8 @@ Kubernetes_Cdac_Project/
 │   │   ├── 📄 prometheus.yaml              # RBAC + ConfigMap + Deployment + Service
 │   │   ├── 📄 prometheus-alerts.yaml        # Alert rules ConfigMap
 │   │   ├── 📄 grafana.yaml                  # Datasource + Deployment + Service
-│   │   ├── 📄 grafana-dashboards.yaml       # Pre-built dashboard JSONs
+│   ├── 📄 grafana-dashboards.yaml       # Pre-built dashboard JSONs
+│   │   ├── 📄 grafana-secret.yaml          # Grafana credentials (K8s Secret)
 │   │   ├── 📄 kube-state-metrics.yaml       # RBAC + Deployment + Service
 │   │   └── 📄 node-exporter.yaml            # DaemonSet + Service
 │   ├── 📂 nginx/                            # Sample workload (NFS-persistent)
@@ -544,6 +548,8 @@ Kubernetes_Cdac_Project/
 │   │   ├── 📄 storage-class.yaml            # nfs-storage StorageClass
 │   │   ├── 📄 nfs-pv.yaml                  # 4 PersistentVolumes
 │   │   └── 📄 nfs-pvc.yaml                 # 4 PersistentVolumeClaims
+│   ├── 📂 autoscaling/                      # HPA + auto-deployed metrics-server
+│   │   └── 📄 nginx-hpa.yaml               # HPA for nginx (CPU/Memory)
 │   └── 📂 falco/                            # Runtime security (optional)
 │       └── 📄 falco.yaml                    # NS + RBAC + Config + DaemonSet
 │
@@ -595,7 +601,7 @@ All settings live in `ansible/group_vars/all.yml`:
 | **Prometheus** | 1 replica | Single instance by design | ⚠️ Thanos needed for HA |
 | **Grafana** | 1 replica | Needs shared storage for HA | ⚠️ NFS already supports it |
 
-> **Note**: This project is optimized for an **8GB RAM, 2-node lab**. For production scaling, add Metrics Server + HPA.
+> **Note**: This project is optimized for an **8GB RAM, 2-node lab**. HPA with metrics-server is **auto-deployed** by Ansible for nginx autoscaling.
 
 ---
 
@@ -656,6 +662,8 @@ All settings live in `ansible/group_vars/all.yml`:
 | Automated backups | ✅ | etcd hourly snapshots |
 | Cluster diagnostics | ✅ | 14-point health check script |
 | Alert rules | ✅ | Prometheus alerting |
+| HPA autoscaling | ✅ | metrics-server + HPA (auto-deployed) |
+| Secrets management | ✅ | Kubernetes Secrets (Grafana credentials) |
 
 ---
 

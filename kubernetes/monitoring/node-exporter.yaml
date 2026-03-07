@@ -2,6 +2,14 @@
 # Node Exporter DaemonSet - Exports Node Metrics for Prometheus
 # =============================================================================
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-exporter
+  namespace: monitoring
+  labels:
+    app: node-exporter
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -21,12 +29,15 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9100"
     spec:
+      serviceAccountName: node-exporter
+      automountServiceAccountToken: false
       hostPID: true
       hostIPC: true
       hostNetwork: true
       containers:
         - name: node-exporter
-          image: prom/node-exporter:latest
+          image: prom/node-exporter:v1.7.0
+          imagePullPolicy: IfNotPresent
           args:
             - '--path.procfs=/host/proc'
             - '--path.sysfs=/host/sys'

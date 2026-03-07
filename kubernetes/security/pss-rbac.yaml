@@ -1,10 +1,11 @@
 # =============================================================================
-# Pod Security Standards - Namespace Configuration
+# Pod Security Standards & RBAC Configuration
 # =============================================================================
-# Apply these labels to enforce PSS on namespaces
+# PSS: Namespace-level security enforcement via admission controller labels
+# RBAC: Role-Based Access Control for cluster users and service accounts
 # =============================================================================
 ---
-# Default namespace - Baseline enforcement
+# Default namespace - Baseline enforcement with restricted warnings
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -16,31 +17,87 @@ metadata:
     pod-security.kubernetes.io/warn-version: latest
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/audit-version: latest
+
+# =============================================================================
+# RBAC - ServiceAccount-Based Access Control
+# =============================================================================
 ---
-# RBAC - Restricted user role example
+# Developer ServiceAccount - for CI/CD pipelines or developer access
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: developer
+  namespace: default
+  labels:
+    role: developer
+---
+# Developer Role - Read access to pods, services, logs in default namespace
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: pod-reader
+  name: developer-role
   namespace: default
 rules:
   - apiGroups: [""]
-    resources: ["pods", "pods/log"]
+    resources: ["pods", "pods/log", "pods/status"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
-    resources: ["services"]
+    resources: ["services", "endpoints"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
     verbs: ["get", "list"]
 ---
+# Bind developer SA to developer role
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: read-pods
+  name: developer-binding
   namespace: default
 subjects:
-  - kind: User
+  - kind: ServiceAccount
     name: developer
-    apiGroup: rbac.authorization.k8s.io
+    namespace: default
 roleRef:
   kind: Role
-  name: pod-reader
+  name: developer-role
   apiGroup: rbac.authorization.k8s.io
+---
+# Viewer ClusterRole - Read-only access across the cluster
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-viewer
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces", "pods", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+# Deployer Role - Can manage deployments in default namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deployer-role
+  namespace: default
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "update", "patch"]

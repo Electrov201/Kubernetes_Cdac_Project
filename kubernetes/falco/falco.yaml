@@ -164,7 +164,8 @@ spec:
           operator: Exists
       containers:
         - name: falco
-          image: docker.io/falcosecurity/falco-no-driver:latest
+          image: docker.io/falcosecurity/falco-no-driver:0.37.1
+          imagePullPolicy: IfNotPresent
           args:
             - /usr/bin/falco
             - -c

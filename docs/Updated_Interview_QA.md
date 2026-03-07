@@ -621,7 +621,7 @@ etcdctl snapshot save \
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | Prometheus | http://192.168.144.130:30090 | None |
-| Grafana | http://192.168.144.130:30300 | admin/admin |
+| Grafana | http://192.168.144.130:30300 | admin/K8sGrafana@2024! |
 | Nginx | http://192.168.144.130:30080 | None |
 
 ### Key Configuration Variables (`all.yml`)

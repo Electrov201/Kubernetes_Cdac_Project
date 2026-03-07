@@ -207,8 +207,11 @@ kubeadm init \
 ```bash
 # Applied in this order:
 kubectl apply -f /opt/kubernetes/storage/       # StorageClass + PV + PVC
+kubectl apply -f /opt/kubernetes/monitoring/grafana-secret.yaml  # Grafana credentials Secret
 kubectl apply -f /opt/kubernetes/monitoring/     # Prometheus + Grafana + Node Exporter + KSM
 kubectl apply -f /opt/kubernetes/nginx/          # Nginx Deployment + Service
+kubectl apply -f https://...metrics-server...    # Auto-deploy metrics-server
+kubectl apply -f /opt/kubernetes/autoscaling/    # HPA for nginx
 kubectl apply -f /opt/kubernetes/security/       # Network Policies + RBAC
 kubectl apply -f /opt/kubernetes/falco/          # Falco DaemonSet (if enabled)
 ```
@@ -281,9 +284,9 @@ Falco (:8765)                     ─── scrape every 30s ──→ Prometheu
 | Setting | Value | Why |
 |---------|-------|-----|
 | Scrape interval | 30s | Save resources (vs default 15s) |
-| Retention time | 2 days | Limit disk usage |
-| Retention size | 500MB | Cap storage |
-| Memory limit | 256Mi | 8GB RAM optimization |
+| Retention time | 3 days | Limit disk usage |
+| Retention size | 1GB | Cap storage |
+| Memory limit | 512Mi | 8GB RAM optimization |
 | Storage | `prometheus-pvc` (NFS 5Gi) | Data persists across restarts |
 
 ### Alert Rules I configured:
@@ -372,14 +375,18 @@ kubectl label namespace default pod-security.kubernetes.io/audit=baseline --over
 - ❌ Dangerous capabilities (`SYS_ADMIN`, `NET_ADMIN`)
 - ✅ Allows non-root containers, seccomp profiles
 
-**RBAC — Least-privilege access:**
+**RBAC — ServiceAccount-based access (not User-based):**
 ```yaml
-# Role: pod-reader (read-only pod access)
+# ServiceAccount: developer (for CI/CD or developer access)
+# Role: developer-role
 rules:
-  - resources: [pods, pods/log]    verbs: [get, list, watch]
-  - resources: [services]          verbs: [get, list]
+  - resources: [pods, pods/log, pods/status]  verbs: [get, list, watch]
+  - resources: [services, endpoints]           verbs: [get, list]
+  - resources: [deployments, replicasets]       verbs: [get, list, watch]
+  - resources: [events, configmaps]             verbs: [get, list]
 
-# Bound to User "developer" in default namespace
+# Also defined: cluster-viewer (ClusterRole), deployer-role (Role)
+# All monitoring services (Prometheus, KSM, Falco) have their own SA + ClusterRole
 ```
 
 **Commands to verify:**
@@ -394,27 +401,46 @@ kubectl run test --image=nginx --privileged=true   # Should FAIL (PSS blocks it)
 ### Layer 3 — Network Security (Network Policies)
 
 ```yaml
-# Policy 1: Block ALL traffic to default namespace
+# Policy 1: Block ALL incoming traffic to default namespace
 kind: NetworkPolicy
 name: default-deny-ingress
 spec:
   podSelector: {}        # Applies to ALL pods
   policyTypes: [Ingress] # Deny all incoming
 
-# Policy 2: Allow traffic to nginx on :8080 only
+# Policy 2: Block ALL outgoing traffic from default namespace
 kind: NetworkPolicy
+name: default-deny-egress
+spec:
+  podSelector: {}        # Applies to ALL pods
+  policyTypes: [Egress]  # Deny all outgoing
+
+# Policy 3: Allow DNS resolution (required for service discovery)
+name: allow-dns-egress
+spec:
+  egress:
+    - ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+
+# Policy 4: Allow traffic to nginx on :8080 only
 name: allow-nginx-ingress
 spec:
   podSelector: {app: nginx}
   ingress:
     - ports: [{port: 8080}]
 
-# Policy 3: Allow Prometheus to scrape default namespace
-kind: NetworkPolicy
+# Policy 5: Allow nginx to access NFS
+name: allow-nginx-egress
+spec:
+  podSelector: {app: nginx}
+  egress:
+    - ports: [{port: 2049}]  # NFS
+
+# Policy 6: Allow Prometheus to scrape default namespace
 name: allow-prometheus-scrape
 spec:
   ingress:
     - from: [{namespaceSelector: {name: monitoring}}]
+      ports: [{port: 8080}, {port: 9100}]
 ```
 
 **Commands to verify:**
@@ -534,7 +560,7 @@ kubectl get pvc --all-namespaces
 # 4. Services accessible
 curl http://192.168.144.130:30080    # Nginx
 curl http://192.168.144.130:30090    # Prometheus
-curl http://192.168.144.130:30300    # Grafana (admin/admin)
+curl http://192.168.144.130:30300    # Grafana (admin/K8sGrafana@2024!)
 
 # 5. Security verification
 kubectl get networkpolicy
@@ -561,8 +587,8 @@ kubectl get pods -w
 | etcd | 200 MB | Master only |
 | API Server + Controller | 400 MB | Master only |
 | Flannel CNI (×2) | 50 MB × 2 | Lightweight overlay |
-| Prometheus | 256 MB | With retention limits |
-| Grafana | 128 MB | Single instance |
+| Prometheus | 512 MB | With retention limits |
+| Grafana | 256 MB | Single instance |
 | Nginx (2 pods) | 64 MB | Alpine image |
 | Falco (×2) | 256 MB × 2 | DaemonSet |
 | **Buffer** | 500 MB | For spikes |
@@ -580,5 +606,7 @@ kubectl get pods -w
 | **NFS for storage** | ReadWriteMany, external to cluster, simple |
 | **Baseline PSS (not Restricted)** | Balances security with compatibility |
 | **Falco DaemonSet** | Only runtime security tool that uses eBPF for syscall monitoring |
-| **2-day Prometheus retention** | Prevents disk exhaustion on NFS |
+| **3-day Prometheus retention** | Prevents disk exhaustion on NFS |
 | **Ansible (not Terraform)** | Configuring existing VMs, not provisioning cloud infra |
+| **K8s Secrets for Grafana** | No hardcoded credentials in manifests |
+| **Pinned image tags** | Reproducible deployments (no `:latest` tags) |

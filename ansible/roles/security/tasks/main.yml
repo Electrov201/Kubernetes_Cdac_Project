@@ -113,7 +113,6 @@
     state: present
   when: disable_root_login | default(true)
   notify: Restart SSH
-  ignore_errors: true
 
 - name: Disable password authentication
   lineinfile:

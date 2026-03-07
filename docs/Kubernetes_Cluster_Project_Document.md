@@ -1132,7 +1132,7 @@ kubectl get pods -n falco -o wide
 |----------------|------------------------------|----------|---------------------|
 | Kubernetes API | https://<master-ip>:6443     | 6443     | kubeconfig token    |
 | Prometheus     | http://<node-ip>:30090       | 30090    | N/A                 |
-| Grafana        | http://<node-ip>:30300       | 30300    | admin / admin       |
+| Grafana        | http://<node-ip>:30300       | 30300    | admin / K8sGrafana@2024!       |
 | Nginx          | http://<node-ip>:30080       | 30080    | N/A                 |
 
 ---

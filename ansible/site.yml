@@ -80,6 +80,11 @@
         KUBECONFIG: /etc/kubernetes/admin.conf
       ignore_errors: true
 
+    - name: Apply monitoring secrets (must be before monitoring stack)
+      shell: kubectl apply -f /opt/kubernetes/monitoring/grafana-secret.yaml
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
     - name: Apply monitoring manifests
       shell: kubectl apply -f /opt/kubernetes/monitoring/
       environment:
@@ -87,6 +92,29 @@
 
     - name: Apply nginx manifests
       shell: kubectl apply -f /opt/kubernetes/nginx/
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: Deploy metrics-server (required for HPA autoscaling)
+      shell: |
+        kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+        # Patch metrics-server to add --kubelet-insecure-tls (required for kubeadm clusters)
+        kubectl patch deployment metrics-server -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]' || true
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: metrics_server_result
+      retries: 3
+      delay: 10
+      until: metrics_server_result.rc == 0
+
+    - name: Wait for metrics-server to be ready
+      shell: kubectl rollout status deployment/metrics-server -n kube-system --timeout=120s
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      ignore_errors: true
+
+    - name: Apply autoscaling manifests
+      shell: kubectl apply -f /opt/kubernetes/autoscaling/
       environment:
         KUBECONFIG: /etc/kubernetes/admin.conf
 

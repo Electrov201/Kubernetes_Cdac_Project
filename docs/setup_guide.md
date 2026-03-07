@@ -24,17 +24,16 @@ Cdac Project/
 │       └── security/                # Firewall, SSH hardening
 │
 ├── 📁 kubernetes/                   # K8s manifests (auto-deployed)
-│   ├── monitoring/                  # Prometheus + Grafana
+│   ├── autoscaling/                 # HPA for nginx (auto-deploys metrics-server)
+│   ├── monitoring/                  # Prometheus + Grafana + Secrets
 │   ├── storage/                     # NFS PV/PVC for Ubuntu NFS Server
 │   ├── nginx/                       # Sample application
-│   ├── security/                    # Network Policies, RBAC
-│   └── falco/                       # Runtime security
-│   ├── nginx/                       # Sample application
-│   ├── security/                    # Network Policies, RBAC
+│   ├── security/                    # Network Policies, RBAC, PSS
 │   └── falco/                       # Runtime security
 │
 ├── 📁 scripts/
-│   └── etcd-backup.sh              # Automated backup script
+│   ├── etcd-backup.sh              # Automated backup script
+│   └── diagnose-services.sh        # Cluster diagnostics
 │
 └── 📁 docs/
     ├── Kubernetes_Cluster_Project_Document.md  # Full documentation
@@ -267,10 +266,11 @@ ansible-playbook -i inventory/hosts.ini site.yml
 4. ✅ Initializes Kubernetes cluster
 5. ✅ Installs Flannel CNI
 6. ✅ Joins worker nodes
-7. ✅ Deploys Prometheus & Grafana
+7. ✅ Deploys Prometheus (v2.49.1) & Grafana (v10.2.3)
 8. ✅ Deploys Nginx sample app
-9. ✅ Configures security (firewall, PSS)
-10. ✅ Deploys Falco runtime security
+9. ✅ Deploys metrics-server & HPA (autoscaling)
+10. ✅ Configures security (firewall, PSS, RBAC, NetworkPolicies)
+11. ✅ Deploys Falco runtime security
 
 **Wait for completion (15-25 minutes)**
 
@@ -315,7 +315,7 @@ Open in your browser:
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | **Prometheus** | http://\<master-ip\>:30090 | N/A |
-| **Grafana** | http://\<master-ip\>:30300 | admin / admin |
+| **Grafana** | http://\<master-ip\>:30300 | admin / K8sGrafana@2024! |
 | **Nginx** | http://\<master-ip\>:30080 | N/A |
 
 ---
@@ -416,13 +416,20 @@ kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/
 | File | Purpose |
 |------|---------|
 | `monitoring/namespace.yaml` | Creates monitoring namespace |
-| `monitoring/prometheus.yaml` | Deploys Prometheus with RBAC |
-| `monitoring/grafana.yaml` | Deploys Grafana with datasource |
-| `storage/nfs-pv.yaml` | NFS storage volume |
-| `storage/nfs-pvc.yaml` | Storage claim for apps |
+| `monitoring/grafana-secret.yaml` | Grafana credentials (K8s Secret) |
+| `monitoring/prometheus.yaml` | Deploys Prometheus (v2.49.1) with RBAC |
+| `monitoring/grafana.yaml` | Deploys Grafana (v10.2.3) with Secret-based creds |
+| `monitoring/node-exporter.yaml` | Node system metrics exporter (v1.7.0) |
+| `monitoring/kube-state-metrics.yaml` | K8s object metrics (v2.10.1) |
+| `monitoring/prometheus-alerts.yaml` | Alerting rules |
+| `monitoring/grafana-dashboards.yaml` | Pre-built dashboards |
+| `storage/nfs-pv.yaml` | NFS storage volumes |
+| `storage/nfs-pvc.yaml` | Storage claims for apps |
+| `storage/storage-class.yaml` | NFS StorageClass |
 | `nginx/deployment.yaml` | Sample app with self-healing |
-| `security/network-policy.yaml` | Network isolation rules |
-| `security/pss-rbac.yaml` | Pod Security Standards + RBAC |
+| `autoscaling/nginx-hpa.yaml` | Horizontal Pod Autoscaler for nginx |
+| `security/network-policy.yaml` | Network isolation rules (ingress+egress) |
+| `security/pss-rbac.yaml` | Pod Security Standards + ServiceAccount RBAC |
 | `falco/falco.yaml` | Runtime security DaemonSet |
 
 ### Scripts
@@ -445,7 +452,8 @@ kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/
 - [ ] Ran `ansible-playbook site.yml` successfully
 - [ ] All nodes show `Ready` status
 - [ ] All pods are `Running`
-- [ ] Accessed Prometheus, Grafana, Nginx
+- [ ] Accessed Prometheus, Grafana (admin / K8sGrafana@2024!), Nginx
+- [ ] HPA is active: `kubectl get hpa`
 
 ---
 
@@ -456,8 +464,9 @@ kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/
 2. Show running pods: `kubectl get pods -A`
 3. Open Grafana dashboard
 4. Demo self-healing: delete a pod, show recreation
-5. Demo Falco: exec into container, show alert
-6. Show etcd backup: `ls /backup/etcd/`
+5. Demo autoscaling: `kubectl get hpa` to show HPA
+6. Demo Falco: exec into container, show alert
+7. Show etcd backup: `ls /backup/etcd/`
 
 **Total setup time: ~1.5 hours**
 
