@@ -959,11 +959,13 @@ This project combines all these skills in a practical, deployable solution.
 **Answer**: Future enhancements I would make:
 
 1. **High Availability**: Add multiple master nodes with HAProxy
-2. **Horizontal Pod Autoscaling**: Deploy Metrics Server and HPA
-3. **GitOps**: Integrate ArgoCD for declarative deployments
-4. **Log Management**: Add Loki for log aggregation
-5. **Ingress Controller**: Replace NodePorts with Nginx Ingress
-6. **Secrets Management**: Integrate HashiCorp Vault
+2. **GitOps**: Integrate ArgoCD for declarative deployments
+3. **Log Management**: Add Loki for log aggregation
+4. **Ingress Controller**: Replace NodePorts with Nginx Ingress
+5. **External Secrets**: Integrate HashiCorp Vault (currently using K8s Secrets)
+6. **VPA (Vertical Pod Autoscaler)**: Right-size container resources automatically
+
+> **Already implemented**: HPA autoscaling (with auto-deployed metrics-server), K8s Secrets for Grafana credentials, pinned image versions.
 
 ### Q: How did you handle the pressure of troubleshooting?
 

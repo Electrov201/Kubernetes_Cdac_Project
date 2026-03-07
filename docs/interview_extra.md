@@ -24,7 +24,7 @@
 "I didn't want a default (insecure) cluster. I applied **Defense-in-Depth**:
 - **Network**: I configured `UFW` firewalls to block all non-essential ports.
 - **Runtime**: I installed **Falco** to monitor functionality like 'shell in container'.
-- **Policy**: I enabled **Pod Security Standards (Restricted)** to prevent root containers from running."
+- **Policy**: I enabled **Pod Security Standards (Baseline enforce + Restricted warn)** to prevent root containers from running."
 
 ### Phase 4: The Eyes (Observability)
 "A black-box cluster is dangerous. I deployed a monitoring stack:

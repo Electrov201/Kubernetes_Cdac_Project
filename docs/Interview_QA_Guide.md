@@ -487,10 +487,11 @@ DevOps teams spend 60%+ of time on repetitive tasks instead of innovation. Manua
 >
 > | Layer | Security Measure |
 > |-------|------------------|
-> | **Network** | UFW firewall, Network Policies (default deny) |
+> | **Network** | UFW firewall, Network Policies (default deny ingress+egress) |
 > | **Authentication** | SSH key-only, no root login |
-> | **Authorization** | RBAC for Prometheus ServiceAccount |
-> | **Pod Security** | Pod Security Standards (restricted) |
+> | **Authorization** | ServiceAccount RBAC (developer, deployer, prometheus, KSM, falco) |
+> | **Pod Security** | Pod Security Standards (baseline enforce, restricted warn) |
+> | **Secrets** | Grafana credentials stored in K8s Secret (not hardcoded) |
 > | **File System** | CIS benchmark file permissions |
 > | **Runtime** | Falco for anomaly detection |
 
@@ -532,7 +533,28 @@ DevOps teams spend 60%+ of time on repetitive tasks instead of innovation. Manua
 >   podSelector: {}  # Applies to all pods
 >   policyTypes: [Ingress]
 > ---
-> # Allow only nginx to receive traffic
+> # Default deny all egress
+> apiVersion: networking.k8s.io/v1
+> kind: NetworkPolicy
+> metadata:
+>   name: default-deny-egress
+> spec:
+>   podSelector: {}  # Applies to all pods
+>   policyTypes: [Egress]
+> ---
+> # Allow DNS resolution (required for service discovery)
+> apiVersion: networking.k8s.io/v1
+> kind: NetworkPolicy
+> metadata:
+>   name: allow-dns-egress
+> spec:
+>   podSelector: {}
+>   egress:
+>     - ports:
+>         - port: 53
+>           protocol: UDP
+> ---
+> # Allow only nginx to receive traffic on port 8080
 > apiVersion: networking.k8s.io/v1
 > kind: NetworkPolicy
 > metadata:
@@ -543,7 +565,7 @@ DevOps teams spend 60%+ of time on repetitive tasks instead of innovation. Manua
 >       app: nginx
 >   ingress:
 >     - ports:
->         - port: 80
+>         - port: 8080
 > ```
 
 ### Q23: What are Pod Security Standards (PSS)?
@@ -557,10 +579,12 @@ DevOps teams spend 60%+ of time on repetitive tasks instead of innovation. Manua
 > | **Baseline** | Prevents known privilege escalations |
 > | **Restricted** | Follows security best practices |
 >
-> I apply **restricted** to default namespace:
+> I apply **baseline** enforcement with **restricted** warnings to the default namespace:
 > ```yaml
 > kubectl label namespace default \
->   pod-security.kubernetes.io/enforce=restricted
+>   pod-security.kubernetes.io/enforce=baseline \
+>   pod-security.kubernetes.io/warn=restricted \
+>   pod-security.kubernetes.io/audit=restricted
 > ```
 
 ### Q24: What is RBAC and how is it used?
@@ -573,8 +597,24 @@ DevOps teams spend 60%+ of time on repetitive tasks instead of innovation. Manua
 > - **Role/ClusterRole** - Defines permissions
 > - **RoleBinding/ClusterRoleBinding** - Assigns role to account
 >
-> My Prometheus RBAC:
+> My project RBAC (ServiceAccount-based):
 > ```yaml
+> # Application RBAC in pss-rbac.yaml
+> apiVersion: v1
+> kind: ServiceAccount
+> metadata:
+>   name: developer
+> ---
+> apiVersion: rbac.authorization.k8s.io/v1
+> kind: Role
+> metadata:
+>   name: developer-role
+> rules:
+>   - apiGroups: [""]
+>     resources: ["pods", "pods/log", "services"]
+>     verbs: ["get", "list", "watch"]
+>
+> # Monitoring RBAC in prometheus.yaml
 > apiVersion: rbac.authorization.k8s.io/v1
 > kind: ClusterRole
 > metadata:
@@ -750,14 +790,15 @@ DevOps teams spend 60%+ of time on repetitive tasks instead of innovation. Manua
 
 > **Answer:**
 > ```bash
-> # Scale to 5 replicas
+> # Scale to 5 replicas manually
 > kubectl scale deployment nginx --replicas=5
 > 
 > # Verify
 > kubectl get pods -l app=nginx
 > 
-> # Auto-scaling (if metrics-server installed)
-> kubectl autoscale deployment nginx --min=2 --max=10 --cpu-percent=80
+> # HPA is auto-deployed by Ansible (with metrics-server)
+> # It auto-scales nginx from 2 to 5 replicas based on CPU (70%) and memory (80%)
+> kubectl get hpa
 > ```
 
 ### Q37: What is the purpose of the init container in your nginx deployment?
