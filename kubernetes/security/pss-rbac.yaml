@@ -101,3 +101,50 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list", "create", "update", "patch"]
+---
+# Deployer ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deployer
+  namespace: default
+  labels:
+    role: deployer
+---
+# Bind deployer SA to deployer-role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployer-binding
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: deployer
+    namespace: default
+roleRef:
+  kind: Role
+  name: deployer-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# Viewer ServiceAccount (creates cross-cluster viewer)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: viewer
+  namespace: default
+  labels:
+    role: viewer
+---
+# Bind viewer SA to cluster-viewer ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: viewer-binding
+subjects:
+  - kind: ServiceAccount
+    name: viewer
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: cluster-viewer
+  apiGroup: rbac.authorization.k8s.io

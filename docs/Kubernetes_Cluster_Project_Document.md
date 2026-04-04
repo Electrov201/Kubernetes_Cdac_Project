@@ -9,7 +9,7 @@
 | **Platform**        | DevOps                                                                   |
 | **Duration**        | 2 Months                                                                 |
 | **Operating System**| Ubuntu Linux 22.04 LTS                                                   |
-| **Orchestration**   | Kubernetes v1.29 (kubeadm)                                               |
+| **Orchestration**   | Kubernetes v1.35 (kubeadm)                                               |
 | **Automation**      | Ansible 2.9+                                                             |
 | **Storage**         | TrueNAS (NFS) with PV/PVC                                                |
 | **Monitoring**      | Prometheus + Grafana                                                     |
@@ -258,8 +258,8 @@ This project implements an **automated, production-ready Kubernetes cluster** us
 |---------------------|--------------------------|-------------|------------------------------------------------|
 | Operating System    | Ubuntu Linux             | 22.04 LTS   | Host operating system for all nodes            |
 | Container Runtime   | Containerd               | 1.7.x       | Container runtime (CRI-compliant)              |
-| Orchestration       | Kubernetes               | 1.29.x      | Container orchestration platform               |
-| Cluster Bootstrap   | kubeadm                  | 1.29.x      | Cluster initialization and management          |
+| Orchestration       | Kubernetes               | 1.35.x      | Container orchestration platform               |
+| Cluster Bootstrap   | kubeadm                  | 1.35.x      | Cluster initialization and management          |
 | Automation          | Ansible                  | 2.9+        | Infrastructure as Code (IaC)                   |
 | CNI Plugin          | Calico                   | 3.26.x      | Pod networking and network policies            |
 | Storage Backend     | TrueNAS                  | Latest      | NFS-based persistent storage                   |
@@ -432,7 +432,7 @@ ansible_python_interpreter=/usr/bin/python3
 #### Global Variables (all.yml)
 ```yaml
 # Kubernetes Configuration
-kubernetes_version: "1.29"
+kubernetes_version: "1.35"
 pod_network_cidr: "10.244.0.0/16"
 service_cidr: "10.96.0.0/12"
 

@@ -202,11 +202,15 @@
     - /backup/etcd
     - /opt/scripts
 
-- name: Copy etcd backup script
+- name: Copy operational scripts
   copy:
-    src: "{{ playbook_dir }}/../scripts/etcd-backup.sh"
-    dest: /opt/scripts/etcd-backup.sh
+    src: "{{ playbook_dir }}/../scripts/{{ item }}"
+    dest: "/opt/scripts/{{ item }}"
     mode: '0755'
+  loop:
+    - etcd-backup.sh
+    - generate-kubeconfig.sh
+    - diagnose-services.sh
   ignore_errors: true
 
 - name: Setup etcd backup cron job

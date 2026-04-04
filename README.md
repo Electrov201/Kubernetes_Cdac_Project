@@ -6,7 +6,7 @@
 <h3 align="center">Production-Ready • Ansible-Powered • Fully Observable • CIS-Hardened</h3>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Kubernetes-v1.29-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white" alt="Kubernetes"/>
+  <img src="https://img.shields.io/badge/Kubernetes-v1.35-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white" alt="Kubernetes"/>
   <img src="https://img.shields.io/badge/Ansible-Automation-EE0000?style=for-the-badge&logo=ansible&logoColor=white" alt="Ansible"/>
   <img src="https://img.shields.io/badge/Ubuntu-22.04_LTS-E95420?style=for-the-badge&logo=ubuntu&logoColor=white" alt="Ubuntu"/>
   <img src="https://img.shields.io/badge/Prometheus-Monitoring-E6522C?style=for-the-badge&logo=prometheus&logoColor=white" alt="Prometheus"/>
@@ -57,7 +57,7 @@ graph LR
         end
     end
 
-    subgraph K8S["☸️ Kubernetes Control & Data Plane (v1.29)"]
+    subgraph K8S["☸️ Kubernetes Control & Data Plane (v1.35)"]
         direction TB
         subgraph CP["Control Plane (Master)"]
             API["<b>API Server</b> :6443"]
@@ -92,7 +92,7 @@ graph LR
             FALCO["<b>Falco</b><br/>Runtime Threat Detection"]
             NP["<b>Network Policies</b><br/>Zero-Trust / Default Deny"]
             PSS["<b>Pod Security (PSS)</b><br/>Baseline Enforcement"]
-            RBAC["<b>RBAC</b><br/>Least Privilege Access"]
+            RBAC["<b>RBAC</b><br/>3-Tier Access Control<br/>developer / deployer / viewer"]
         end
     end
 
@@ -149,7 +149,7 @@ flowchart TD
         P1C["3. Load kernel modules\n<code>modprobe overlay</code>\n<code>modprobe br_netfilter</code>"]
         P1D["4. Configure sysctl\nip_forward = 1\nbridge-nf-call-iptables = 1"]
         P1E["5. Install containerd\nSet SystemdCgroup = true"]
-        P1F["6. Install K8s v1.29\nkubelet + kubeadm + kubectl"]
+        P1F["6. Install K8s v1.35\nkubelet + kubeadm + kubectl"]
         P1G["7. UFW Firewall\nDeny incoming by default\nAllow: SSH, 6443, 10250, .."]
         P1H["8. SSH Hardening\nNo root login\nNo password auth"]
         P1I["9. CIS Benchmarks\nFile perms 0600\nDisable anon kubelet auth"]
@@ -384,7 +384,7 @@ graph LR
 | **OS** | Ubuntu 22.04 LTS | Long-term support, wide community, ideal for K8s |
 | **Automation** | Ansible | Agentless, YAML-based, perfect for server configuration |
 | **Container Runtime** | containerd | Official CRI for K8s 1.24+, lighter than Docker (~50MB) |
-| **Orchestration** | Kubernetes v1.29 | Industry-standard container orchestration |
+| **Orchestration** | Kubernetes v1.35 | Industry-standard container orchestration |
 | **CNI** | Flannel | Lightweight VXLAN (~50MB RAM), ideal for small clusters |
 | **Monitoring** | Prometheus | Pull-based, PromQL, Kubernetes-native service discovery |
 | **Visualization** | Grafana | Rich dashboards, multi-datasource, free & open-source |
@@ -543,7 +543,8 @@ Kubernetes_Cdac_Project/
 │
 ├── 📂 scripts/                              # Operational scripts
 │   ├── 📄 etcd-backup.sh                    # Hourly etcd snapshot + NFS copy
-│   └── 📄 diagnose-services.sh              # 14-point cluster health check
+│   ├── 📄 diagnose-services.sh              # 14-point cluster health check
+│   └── 📄 generate-kubeconfig.sh            # RBAC kubeconfig generator (24h tokens)
 │
 ├── 📂 docs/                                 # Documentation
 │   ├── 📄 Kubernetes_Cluster_Project_Document.md  # Complete project documentation
@@ -563,7 +564,7 @@ All settings live in `ansible/group_vars/all.yml`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `kubernetes_version` | `1.29` | Kubernetes version to install |
+| `kubernetes_version` | `1.35` | Kubernetes version to install |
 | `api_server_advertise_address` | `192.168.144.130` | Master node IP address |
 | `pod_network_cidr` | `10.244.0.0/16` | Pod IP range (must match Flannel) |
 | `cni_plugin` | `flannel` | CNI plugin (`flannel` or `calico`) |
@@ -642,7 +643,8 @@ All settings live in `ansible/group_vars/all.yml`:
 | CIS Kubernetes Benchmarks | ✅ | Ansible security role |
 | Pod Security Standards | ✅ | Baseline enforcement |
 | Network Policies | ✅ | Zero-trust (default deny) |
-| RBAC | ✅ | Least-privilege roles |
+| RBAC | ✅ | 3-tier access: developer, deployer, viewer |
+| Kubeconfig generation | ✅ | ServiceAccount token-based (24h expiry) |
 | Runtime threat detection | ✅ | Falco (syscall monitoring) |
 | Self-healing workloads | ✅ | Liveness + Readiness probes |
 | Rolling updates | ✅ | Zero-downtime deployments |

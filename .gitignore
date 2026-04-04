@@ -1,0 +1,47 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Ansible
+*.retry
+*.log
+ansible.log
+ansible-debug.log
+
+# K8s temporary / localized files
+*.kubeconfig
+*.conf
+/backup/
+/opt/scripts/etcd-backup.sh
+/opt/k8s-join-command.sh
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.sublime-workspace
+.sublime-project
+.antigravityignore
+
+# Python (if used for Ansible venvs)
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+ENV/
+
+# Terraform / Vault (just in case)
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+.vault-password

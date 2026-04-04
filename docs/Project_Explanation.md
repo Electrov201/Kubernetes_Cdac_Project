@@ -194,7 +194,7 @@ ansible_ssh_private_key_file=~/.ssh/id_rsa # SSH key (no passwords)
 
 #### `ansible/group_vars/all.yml` — All configurable settings
 ```yaml
-kubernetes_version: "1.29"                 # Which K8s version to install
+kubernetes_version: "1.35"                 # Which K8s version to install
 api_server_advertise_address: "192.168.144.130"  # Master IP
 nfs_server: "192.168.144.132"              # NFS storage server IP
 cni_plugin: "flannel"                      # Network plugin (flannel = lightweight)
@@ -345,8 +345,8 @@ kubeadm token create --print-join-command
 ```bash
 $ kubectl get nodes -o wide
 NAME          STATUS   ROLES           AGE   VERSION   INTERNAL-IP
-k8s-master    Ready    control-plane   10m   v1.29.x   192.168.144.130
-k8s-worker1   Ready    <none>          8m    v1.29.x   192.168.144.134
+k8s-master    Ready    control-plane   10m   v1.35.x   192.168.144.130
+k8s-worker1   Ready    <none>          8m    v1.35.x   192.168.144.134
 ```
 
 ---

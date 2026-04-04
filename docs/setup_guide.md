@@ -290,8 +290,8 @@ kubectl get nodes
 
 # Expected output:
 NAME          STATUS   ROLES           AGE   VERSION
-k8s-master    Ready    control-plane   10m   v1.29.x
-k8s-worker1   Ready    <none>          8m    v1.29.x
+k8s-master    Ready    control-plane   10m   v1.35.x
+k8s-worker1   Ready    <none>          8m    v1.35.x
 ```
 
 #### Step 5.3: Check All Pods

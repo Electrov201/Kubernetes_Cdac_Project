@@ -879,7 +879,7 @@ kubectl auth can-i list pods --as=system:serviceaccount:default:developer
 
 | Variable | Value |
 |---|---|
-| `kubernetes_version` | 1.29 |
+| `kubernetes_version` | 1.35 |
 | `cni_plugin` | flannel |
 | `pss_level` | baseline |
 | `enable_falco` | true |

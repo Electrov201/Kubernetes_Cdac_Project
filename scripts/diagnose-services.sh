@@ -152,8 +152,10 @@ echo ""
 # Check NFS connectivity
 echo "14. NFS Server Connectivity Test:"
 echo "-------------------------------------------"
-NFS_SERVER=$(kubectl get pv -o jsonpath='{.items[0].spec.nfs.server}' 2>/dev/null || echo "192.168.144.132")
-if ping -c 1 -W 2 $NFS_SERVER &> /dev/null; then
+NFS_SERVER=$(kubectl get pv -o jsonpath='{.items[0].spec.nfs.server}' 2>/dev/null || echo "")
+if [ -z "$NFS_SERVER" ]; then
+    echo "WARNING: Could not determine NFS Server IP from PV manifests."
+elif ping -c 1 -W 2 $NFS_SERVER &> /dev/null; then
     echo "NFS Server ($NFS_SERVER) is reachable"
 else
     echo "WARNING: Cannot ping NFS Server ($NFS_SERVER)"
@@ -161,7 +163,7 @@ else
 fi
 
 # Check if NFS is mounted
-if command -v showmount &> /dev/null; then
+if [ -n "$NFS_SERVER" ] && command -v showmount &> /dev/null; then
     echo ""
     echo "NFS Exports from $NFS_SERVER:"
     showmount -e $NFS_SERVER 2>/dev/null || echo "  Could not query NFS exports"
